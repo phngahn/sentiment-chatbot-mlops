@@ -361,8 +361,8 @@ if __name__ == "__main__":
     if args.run_now:
         logger.info("Chế độ --run-now: chạy 1 lần rồi thoát")
         crawl_changed_products(products_csv=args.products_csv)
-    else:
-        # Chạy ngay 1 lần khi khởi động, sau đó lập lịch hàng ngày
-        logger.info("Chạy job lần đầu ngay khi khởi động...")
-        crawl_changed_products(products_csv=args.products_csv)
-        run_scheduler()
+    # else:
+    #     # Chạy ngay 1 lần khi khởi động, sau đó lập lịch hàng ngày
+    #     logger.info("Chạy job lần đầu ngay khi khởi động...")
+    #     crawl_changed_products(products_csv=args.products_csv)
+        # run_scheduler()
