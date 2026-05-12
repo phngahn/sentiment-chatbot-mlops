@@ -3,7 +3,6 @@ import os
 import logging
 from dotenv import load_dotenv
 
-# Tìm file .env ở thư mục gốc (vì bà đang đứng ở gốc nên nó sẽ bốc đúng)
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
