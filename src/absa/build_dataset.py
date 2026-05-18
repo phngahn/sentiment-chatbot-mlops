@@ -182,6 +182,3 @@ def main(version):
         version_dir,
         version
     )
-
-if __name__ == "__main__":
-    update_dataset("v1","v2", BASE_DIR / "data/processed/labeled_processed_reviews_20260508.csv")
