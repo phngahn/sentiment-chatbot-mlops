@@ -1,0 +1,28 @@
+{
+  "os":  "Windows-11-10.0.26200-SP0",
+  "python":  "CPython 3.12.3",
+  "startedAt":  "2026-05-18T07:20:15.605344Z",
+  "program":  "d:\\Code\\sentiment-chatbot-mlops\\src\\absa\\build_dataset.py",
+  "codePath":  "src\\absa\\build_dataset.py",
+  "codePathLocal":  "src\\absa\\build_dataset.py",
+  "git":  {
+    "remote":  "https://github.com/phngahn/sentiment-chatbot-mlops.git",
+    "commit":  "afbdd34e82d60c6d918d9809ae5b2f88bf0d35ea"
+  },
+  "email":  "phuonganhtran262005@gmail.com",
+  "root":  "D:\\Code\\sentiment-chatbot-mlops",
+  "host":  "LAPTOP-BG291I2D",
+  "executable":  "C:\\Anaconda3\\python.exe",
+  "cpu_count":  12,
+  "cpu_count_logical":  16,
+  "disk":  {
+    "/":  {
+      "total":  "107373129728",
+      "used":  "6335676416"
+    }
+  },
+  "memory":  {
+    "total":  "34009374720"
+  },
+  "writerId":  "5xypm11opaoh7vxkxnqy1s855c9d1d09"
+}
