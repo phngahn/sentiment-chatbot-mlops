@@ -274,7 +274,7 @@ sweep_config = {
     },
     
     "parameters": {
-        "dataset_version": {"values": ["v1"]},
+        "dataset_version": {"values": ["v2"]},
         "learning_rate": {"values": [2e-5, 5e-5]},
         "batch_size": {"values": [16, 32]},
         "epochs": {"values": [20]},
