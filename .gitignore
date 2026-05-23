@@ -8,5 +8,7 @@ airflow/logs/
 airflow/airflow.db
 airflow/airflow-webserver.pid
 airflow/airflow.cfg
+wandb/
+models/**/*.pt
 /__pycache__/
 logs
