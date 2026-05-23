@@ -13,7 +13,7 @@ from src.crawling.scheduler import crawl_changed_products
 default_args = {
     'owner': 'phi_quyen',
     'depends_on_past': False,
-    'start_date': datetime(2024, 5, 8), 
+    'start_date': datetime(2026, 5, 23), 
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
@@ -22,7 +22,7 @@ with DAG(
     'tiki_incremental_crawler',
     default_args=default_args,
     description='Crawl bù review mới mỗi 15 ngày',
-    schedule_interval='0 2 */15 * *', # 2h sáng mỗi 15 ngày
+    schedule_interval='0 19 * * *', # chạy mỗi ngày lúc 2h sáng (19 h là h utc )
     catchup=False, # Không chạy bù cho những ngày quá khứ
 ) as dag:
 

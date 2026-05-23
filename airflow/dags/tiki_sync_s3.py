@@ -13,16 +13,16 @@ from src.crawling.upload_s3 import sync_local_to_s3
 default_args = {
     'owner': 'phi_quyen',
     'depends_on_past': False,
-    'start_date': datetime(2024, 5, 8), 
+    'start_date': datetime(2026, 5, 23), 
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
 
 with DAG(
-    'tiki_only_sync_s3', # Tên DAG mới
+    'tiki_only_sync_s3',
     default_args=default_args,
     description='Chỉ quét folder data/raw và đồng bộ lên S3 mỗi 15 ngày',
-    schedule_interval='0 2 */15 * *', 
+    schedule_interval='0 20 * * *', 
     catchup=False,
 ) as dag:
 
