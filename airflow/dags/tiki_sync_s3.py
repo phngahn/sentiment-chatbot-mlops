@@ -22,7 +22,7 @@ with DAG(
     'tiki_only_sync_s3',
     default_args=default_args,
     description='Chỉ quét folder data/raw và đồng bộ lên S3 mỗi 15 ngày',
-    schedule_interval='0 20 * * *', 
+    schedule_interval='0 2 * * *', 
     catchup=False,
 ) as dag:
 
