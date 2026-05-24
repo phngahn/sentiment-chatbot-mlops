@@ -12,3 +12,7 @@ wandb/
 models/**/*.pt
 /__pycache__/
 logs
+*.log
+*.pid
+*.out
+*.err
