@@ -21,7 +21,7 @@ default_args = {
 with DAG(
     'tiki_only_sync_s3',
     default_args=default_args,
-    description='Chỉ quét folder data/raw và đồng bộ lên S3 mỗi 1 ngày nếu có data mới',
+    description='Chỉ quét folder data/raw và đồng bộ lên S3 mỗi 1 ngày NẾU có data mới',
     schedule_interval='0 2 * * *', 
     catchup=False,
 ) as dag:
