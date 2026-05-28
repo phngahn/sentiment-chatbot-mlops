@@ -20,3 +20,5 @@ logs
 =======
 logs".env" 
 >>>>>>> Stashed changes
+"data/raw/" 
+"data/processed/" 
