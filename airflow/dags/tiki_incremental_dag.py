@@ -21,8 +21,8 @@ default_args = {
 with DAG(
     'tiki_incremental_crawler',
     default_args=default_args,
-    description='Crawl bù review mới mỗi 15 ngày',
-    schedule_interval='0 19 * * *', # chạy mỗi ngày lúc 2h sáng (19 h là h utc )
+    description='Crawl bù review mới mỗi ngày',
+    schedule_interval='0 1 * * *', # chạy mỗi ngày lúc 2h sáng (19 h là h utc )
     catchup=False, # Không chạy bù cho những ngày quá khứ
 ) as dag:
 

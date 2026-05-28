@@ -1,0 +1,17 @@
+name: Deploy to Server (Test Environment)
+
+# Kích hoạt khi có người push code hoặc merge pull request vào nhánh main
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+    # Bước 1: Kết nối SSH vào server và kéo code mới về
+    - name: update code
+      run: |
+        cd /home/mlops/project_quyen/sentiment-chatbot-mlops
+        git pull origin main
