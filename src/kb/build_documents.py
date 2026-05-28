@@ -35,13 +35,17 @@ ASPECT_VI = {
 
 # ── Helpers ────────────────────────────────────────────
 def get_top_k(n_reviews: int) -> int:
-    if n_reviews <= 2:   return n_reviews
-    if n_reviews <= 10:  return 3
-    if n_reviews <= 20:  return 4
-    if n_reviews <= 50:  return 5
-    if n_reviews <= 100: return 6
-    return min(round(n_reviews * 0.10), 15)
-
+    if n_reviews <= 3:
+        return n_reviews
+    if n_reviews <= 10:
+        return 4
+    if n_reviews <= 20:
+        return 5
+    if n_reviews <= 50:
+        return 6
+    if n_reviews <= 100:
+        return 8
+    return min(max(round(n_reviews * 0.08), 8), 20)
 
 def clean_html(text) -> str:
     if not isinstance(text, str):

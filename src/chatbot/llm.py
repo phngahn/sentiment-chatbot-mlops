@@ -1,5 +1,6 @@
 """
-LLM caller — Groq (Llama 3.3 70B)
+LLM caller — Multi-provider (Groq / OpenRouter)
+Streaming + Optimized prompting for ABSA-aware RAG
 """
 from __future__ import annotations
 import os
@@ -9,24 +10,101 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-SYSTEM_PROMPT = """Bạn là trợ lý mua sắm thông minh của Tiki. 
-Dựa vào thông tin sản phẩm được cung cấp, hãy trả lời câu hỏi của khách hàng một cách ngắn gọn, chính xác.
-Ưu tiên dùng số liệu từ đánh giá (ABSA scores) để đưa ra nhận xét cụ thể.
-Nếu không có đủ thông tin, hãy nói thẳng là không biết, đừng bịa."""
+ASPECTS_VI = {
+    "description": "Mô tả SP",
+    "quality":     "Chất lượng",
+    "packaging":   "Đóng gói",
+    "delivery":    "Giao hàng",
+    "service":     "Dịch vụ",
+    "price":       "Giá cả",
+}
+
+SYSTEM_PROMPT = """Bạn là Tiki Shopping Assistant — trợ lý mua sắm thông minh.
+
+## Nguyên tắc
+- Trả lời tự nhiên như đang trò chuyện, KHÔNG liệt kê khô khan
+- Dựa 100% vào data được cung cấp, KHÔNG bịa
+- Nếu không có data → nói thẳng "mình chưa có thông tin về sản phẩm này"
+
+## Cách diễn đạt số liệu ABSA
+KHÔNG BAO GIỜ viết raw numbers như "score 0.87" hay "94 pos / 47 neg".
+Hãy diễn đạt tự nhiên:
+
+- Nhiều khen (>70%): "được đa số khách hàng đánh giá tích cực"
+- Trái chiều (40-70%): "nhận được đánh giá trái chiều"
+- Nhiều chê (<40%): "nhiều khách hàng phàn nàn"
+- Ít đánh giá (< 10): "chưa có nhiều đánh giá để kết luận"
+
+Khi cần cụ thể, dùng phần trăm tự nhiên:
+✅ "Khoảng 70% khách hài lòng về giao hàng"
+✅ "Chất lượng là điểm yếu — chỉ 1/3 khách hài lòng"
+❌ "absa_quality_score: 0.333, pos: 94, neg: 47"
+
+## Cấu trúc trả lời
+- Mở đầu: trả lời thẳng vào câu hỏi (1-2 câu)
+- Thân: phân tích với dẫn chứng tự nhiên
+- Kết: khuyến nghị ngắn gọn
+- Tối đa 250 từ
+- Highlight cả ưu VÀ nhược điểm
+
+## Khi gợi ý sản phẩm
+- Nêu tên + giá + lý do cụ thể
+- Gợi ý ai nên/không nên mua
+
+## Khi so sánh
+- Tóm tắt khác biệt chính
+- Kết luận: "nếu cần X thì chọn A, nếu cần Y thì chọn B"
+
+## Ngôn ngữ
+- Tiếng Việt tự nhiên, thân thiện
+- Dùng "mình/bạn"
+- Emoji nhẹ nhàng, không quá nhiều"""
+
 
 def build_context(docs: list[dict]) -> str:
+    """Format context cho LLM — structured với ABSA scores."""
     parts = []
     for i, doc in enumerate(docs, 1):
         m = doc.get("metadata", {})
         text = doc.get("text", "")
-        parts.append(f"[{i}] {text}" if text else f"[{i}] {m.get('name', '')} — (metadata only)")
-    return "\n\n".join(parts)
+        doc_type = doc.get("doc_type", "")
+
+        # Header
+        header = f"[Nguồn {i}] ({doc_type})"
+        if m.get("name"):
+            header += f" {m['name']}"
+            if m.get("price"):
+                header += f" — {m['price']:,.0f}đ"
+            if m.get("rating_average"):
+                header += f" — {m['rating_average']}/5 ({m.get('review_count', '?')} đánh giá)"
+
+        # ABSA scores
+        absa_lines = []
+        for asp_en, asp_vi in ASPECTS_VI.items():
+            score = m.get(f"absa_{asp_en}_score")
+            pos = m.get(f"absa_{asp_en}_pos", 0)
+            neg = m.get(f"absa_{asp_en}_neg", 0)
+            if score is not None:
+                total = pos + neg
+                pct = round(pos / total * 100) if total > 0 else 0
+                absa_lines.append(f"  {asp_vi}: {pct}% hài lòng ({pos} khen / {neg} chê)")
+
+        absa_block = ""
+        if absa_lines:
+            absa_block = "\nPhân tích đánh giá:\n" + "\n".join(absa_lines)
+
+        content = text if text else "(không có nội dung text)"
+        parts.append(f"{header}\n{content}{absa_block}")
+
+    return "\n\n" + "=" * 50 + "\n\n".join(parts)
+
 
 def ask(query: str, docs: list[dict]) -> str:
+    """Non-streaming — dùng cho FastAPI endpoint."""
     context = build_context(docs)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": f"Thông tin sản phẩm:\n{context}\n\nCâu hỏi: {query}"},
+        {"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"},
     ]
     resp = client.chat.completions.create(
         model=GROQ_MODEL,
@@ -35,3 +113,23 @@ def ask(query: str, docs: list[dict]) -> str:
         temperature=0.3,
     )
     return resp.choices[0].message.content
+
+
+def ask_stream(query: str, docs: list[dict]):
+    """Streaming — yield từng chunk như ChatGPT."""
+    context = build_context(docs)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"},
+    ]
+    stream = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=messages,
+        max_tokens=1024,
+        temperature=0.3,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
