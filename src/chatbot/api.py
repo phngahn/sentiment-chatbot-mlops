@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from prometheus_fastapi_instrumentator import Instrumentator
 
 load_dotenv()
 
@@ -12,6 +13,7 @@ from src.chatbot.retrieval import TikiRAG, RagFilters
 from src.chatbot import llm
 
 app = FastAPI(title="Tiki RAG Chatbot")
+Instrumentator().instrument(app).expose(app)
 rag = TikiRAG()
 
 
