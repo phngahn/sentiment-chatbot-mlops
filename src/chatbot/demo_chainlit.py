@@ -95,16 +95,10 @@ async def handle_chat(query: str):
 
     try:
         history = cl.user_session.get("history", [])
-        last_docs = cl.user_session.get("last_docs", [])
 
         async with cl.Step(name="🔍 Tìm kiếm", type="retrieval") as step:
-            if last_docs and not needs_new_search(query, history):
-                docs = last_docs
-                step.output = f"Dùng {len(docs)} sản phẩm từ câu hỏi trước"
-            else:
-                docs = rag.search(query, top_k=5)
-                cl.user_session.set("last_docs", docs)
-                step.output = f"{len(docs)} sản phẩm"
+            docs = rag.search(query, top_k=5)
+            step.output = f"{len(docs)} sản phẩm"
 
         full_answer = ""
         for chunk in ask_stream(query, docs, history=history):
