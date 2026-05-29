@@ -16,3 +16,5 @@ jobs:
         cd /home/mlops/CS317
         
         git pull origin main
+
+        docker compose up -d --build
