@@ -1,6 +1,6 @@
 """
 Chainlit UI — Tiki Shopping Assistant
-Supports: normal chat (streaming) + URL analysis (3-tier)
+Supports: normal chat (streaming) + URL analysis (3-tier) + multi-turn memory
 """
 import re
 from chainlit.input_widget import Select
@@ -15,6 +15,7 @@ from src.chatbot.url_analyzer import analyze_url
 rag = TikiRAG()
 
 TIKI_URL_PATTERN = re.compile(r'(https?://(?:www\.)?tiki\.vn/\S+)')
+MAX_HISTORY = 6  # giữ 6 tin nhắn gần nhất (3 cặp user-bot)
 
 
 @cl.set_starters
@@ -40,6 +41,7 @@ async def start():
     ]).send()
 
     cl.user_session.set("absa_model", "logreg")
+    cl.user_session.set("history", [])
 
     await cl.Message(
         content="👋 Xin chào! Mình là **Tiki Shopping Assistant**.\n\n"
@@ -91,7 +93,7 @@ async def handle_url_analysis(url: str, query: str = ""):
 
 
 async def handle_chat(query: str):
-    """Normal RAG chat with streaming."""
+    """Normal RAG chat with streaming + multi-turn memory."""
     msg = cl.Message(content="")
     await msg.send()
 
@@ -100,12 +102,24 @@ async def handle_chat(query: str):
             docs = rag.search(query, top_k=5)
             step.output = f"{len(docs)} sản phẩm"
 
+        # Lấy history
+        history = cl.user_session.get("history", [])
+
+        # Stream LLM response với history
         full_answer = ""
-        for chunk in llm.ask_stream(query, docs):
+        for chunk in llm.ask_stream(query, docs, history=history):
             full_answer += chunk
             msg.content = full_answer
             await msg.update()
 
+        # Cập nhật history
+        history.append({"role": "user", "content": query})
+        history.append({"role": "assistant", "content": full_answer})
+        if len(history) > MAX_HISTORY:
+            history = history[-MAX_HISTORY:]
+        cl.user_session.set("history", history)
+
+        # Sources
         sources = [
             {"doc_type": d["doc_type"], "name": d["metadata"].get("name", ""), "score": round(d["score"], 3)}
             for d in docs

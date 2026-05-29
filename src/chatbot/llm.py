@@ -99,36 +99,38 @@ def build_context(docs: list[dict]) -> str:
     return "\n\n" + "=" * 50 + "\n\n".join(parts)
 
 
-def ask(query: str, docs: list[dict]) -> str:
-    """Non-streaming — dùng cho FastAPI endpoint."""
+def ask(query: str, docs: list[dict], history: list[dict] = None) -> str:
     context = build_context(docs)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"},
     ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
     resp = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=messages,
         max_tokens=1024,
         temperature=0.3,
     )
-    return resp.choices[0].message.content or ""
+    return resp.choices[0].message.content # pyright: ignore[reportReturnType]
 
 
-def ask_stream(query: str, docs: list[dict]):
-    """Streaming — yield từng chunk như ChatGPT."""
+def ask_stream(query: str, docs: list[dict], history: list[dict] = None): # type: ignore
     context = build_context(docs)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"},
     ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
     stream = client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=messages,
+        messages=messages, # pyright: ignore[reportArgumentType]
         max_tokens=1024,
         temperature=0.3,
         stream=True,
-    )
+    ) # type: ignore
     for chunk in stream:
         delta = chunk.choices[0].delta.content
         if delta:
@@ -142,8 +144,8 @@ def ask_url_recommendation(query: str, report: str) -> str:
     ]
     resp = client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=messages,
+        messages=messages, # type: ignore
         max_tokens=512,
         temperature=0.3,
     )
-    return resp.choices[0].message.content
+    return resp.choices[0].message.content # type: ignore

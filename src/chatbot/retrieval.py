@@ -47,7 +47,7 @@ class TikiRAG:
     def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> list[dict]:
         from qdrant_client.http import models as qm
 
-        out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False)
+        out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False, max_length=256)
         dense = out["dense_vecs"][0]
         sparse = out["lexical_weights"][0]
 
