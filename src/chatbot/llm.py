@@ -171,3 +171,26 @@ def ask_url_recommendation(query: str, report: str) -> str:
         temperature=0.3,
     )
     return resp.choices[0].message.content # type: ignore
+
+def rewrite_query(query: str, history: list[dict]) -> str:
+    """Viết lại query dựa vào history để search Qdrant chính xác hơn."""
+    if not history:
+        return query
+
+    messages = [
+        {"role": "system", "content": "Viết lại câu hỏi của người dùng thành một câu tìm kiếm sản phẩm đầy đủ ngữ cảnh, dựa vào lịch sử hội thoại. Chỉ trả về câu tìm kiếm mới, không giải thích gì thêm. Nếu câu hỏi đã đủ rõ ràng thì giữ nguyên."},
+    ]
+    messages.extend(history[-4:])
+    messages.append({"role": "user", "content": query})
+
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_FAST_MODEL,
+            messages=messages, # type: ignore
+            max_tokens=100,
+            temperature=0,
+        )
+        rewritten = resp.choices[0].message.content.strip() # type: ignore
+        return rewritten if rewritten else query
+    except Exception:
+        return query

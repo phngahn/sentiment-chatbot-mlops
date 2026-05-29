@@ -96,9 +96,16 @@ async def handle_chat(query: str):
     try:
         history = cl.user_session.get("history", [])
 
+        # Rewrite query nếu có history
+        from src.chatbot.llm import rewrite_query
+        search_query = rewrite_query(query, history)
+
         async with cl.Step(name="🔍 Tìm kiếm", type="retrieval") as step:
-            docs = rag.search(query, top_k=5)
-            step.output = f"{len(docs)} sản phẩm"
+            docs = rag.search(search_query, top_k=5)
+            if search_query != query:
+                step.output = f"Tìm: \"{search_query}\" → {len(docs)} sản phẩm"
+            else:
+                step.output = f"{len(docs)} sản phẩm"
 
         full_answer = ""
         for chunk in ask_stream(query, docs, history=history):
