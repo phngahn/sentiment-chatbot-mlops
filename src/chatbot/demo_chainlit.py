@@ -9,13 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.chatbot.retrieval import TikiRAG
-from src.chatbot import llm
+from src.chatbot.llm import ask_stream, needs_new_search, ask_url_recommendation
 from src.chatbot.url_analyzer import analyze_url
 
 rag = TikiRAG()
 
 TIKI_URL_PATTERN = re.compile(r'(https?://(?:www\.)?tiki\.vn/\S+)')
-MAX_HISTORY = 6  # giữ 6 tin nhắn gần nhất (3 cặp user-bot)
+MAX_HISTORY = 6
 
 
 @cl.set_starters
@@ -42,6 +42,7 @@ async def start():
 
     cl.user_session.set("absa_model", "logreg")
     cl.user_session.set("history", [])
+    cl.user_session.set("last_docs", [])
 
     await cl.Message(
         content="👋 Xin chào! Mình là **Tiki Shopping Assistant**.\n\n"
@@ -63,7 +64,6 @@ async def update_settings(settings):
 @cl.on_message
 async def main(message: cl.Message):
     query = message.content
-
     url_match = TIKI_URL_PATTERN.search(query)
 
     if url_match:
@@ -73,12 +73,10 @@ async def main(message: cl.Message):
 
 
 async def handle_url_analysis(url: str, query: str = ""):
-    """URL detected → run 3-tier analysis with progress streaming."""
     msg = cl.Message(content="")
     await msg.send()
 
     absa_model = cl.user_session.get("absa_model", "logreg")
-
     progress_lines = []
 
     async def progress_callback(text: str):
@@ -87,39 +85,39 @@ async def handle_url_analysis(url: str, query: str = ""):
         await msg.update()
 
     report = await analyze_url(url, progress_callback=progress_callback, absa_model=absa_model, user_query=query)
-
     msg.content = "\n".join(progress_lines) + "\n\n---\n\n" + report
     await msg.update()
 
 
 async def handle_chat(query: str):
-    """Normal RAG chat with streaming + multi-turn memory."""
     msg = cl.Message(content="")
     await msg.send()
 
     try:
-        async with cl.Step(name="🔍 Tìm kiếm", type="retrieval") as step:
-            docs = rag.search(query, top_k=5)
-            step.output = f"{len(docs)} sản phẩm"
-
-        # Lấy history
         history = cl.user_session.get("history", [])
+        last_docs = cl.user_session.get("last_docs", [])
 
-        # Stream LLM response với history
+        async with cl.Step(name="🔍 Tìm kiếm", type="retrieval") as step:
+            if last_docs and not needs_new_search(query, history):
+                docs = last_docs
+                step.output = f"Dùng {len(docs)} sản phẩm từ câu hỏi trước"
+            else:
+                docs = rag.search(query, top_k=5)
+                cl.user_session.set("last_docs", docs)
+                step.output = f"{len(docs)} sản phẩm"
+
         full_answer = ""
-        for chunk in llm.ask_stream(query, docs, history=history):
+        for chunk in ask_stream(query, docs, history=history):
             full_answer += chunk
             msg.content = full_answer
             await msg.update()
 
-        # Cập nhật history
         history.append({"role": "user", "content": query})
         history.append({"role": "assistant", "content": full_answer})
         if len(history) > MAX_HISTORY:
             history = history[-MAX_HISTORY:]
         cl.user_session.set("history", history)
 
-        # Sources
         sources = [
             {"doc_type": d["doc_type"], "name": d["metadata"].get("name", ""), "score": round(d["score"], 3)}
             for d in docs

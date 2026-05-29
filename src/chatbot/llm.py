@@ -7,6 +7,7 @@ import os
 from groq import Groq
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_FAST_MODEL = "llama-3.1-8b-instant"
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -62,14 +63,12 @@ Khi cần cụ thể, dùng phần trăm tự nhiên:
 
 
 def build_context(docs: list[dict]) -> str:
-    """Format context cho LLM — structured với ABSA scores."""
     parts = []
     for i, doc in enumerate(docs, 1):
         m = doc.get("metadata", {})
         text = doc.get("text", "")
         doc_type = doc.get("doc_type", "")
 
-        # Header
         header = f"[Nguồn {i}] ({doc_type})"
         if m.get("name"):
             header += f" {m['name']}"
@@ -78,7 +77,6 @@ def build_context(docs: list[dict]) -> str:
             if m.get("rating_average"):
                 header += f" — {m['rating_average']}/5 ({m.get('review_count', '?')} đánh giá)"
 
-        # ABSA scores
         absa_lines = []
         for asp_en, asp_vi in ASPECTS_VI.items():
             score = m.get(f"absa_{asp_en}_score")
@@ -99,6 +97,30 @@ def build_context(docs: list[dict]) -> str:
     return "\n\n" + "=" * 50 + "\n\n".join(parts)
 
 
+def needs_new_search(query: str, history: list[dict]) -> bool:
+    """Dùng LLM nhỏ để detect có cần search Qdrant mới không."""
+    if not history:
+        return True
+
+    messages = [
+        {"role": "system", "content": "Trả lời chỉ YES hoặc NO. Câu hỏi người dùng có cần tìm kiếm sản phẩm MỚI không, hay chỉ hỏi thêm về kết quả vừa trả lời trước đó?"},
+    ]
+    messages.extend(history[-4:])
+    messages.append({"role": "user", "content": query})
+
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_FAST_MODEL,
+            messages=messages,
+            max_tokens=5,
+            temperature=0,
+        )
+        answer = resp.choices[0].message.content.strip().upper()
+        return "YES" in answer
+    except Exception:
+        return True  # fallback: search mới nếu lỗi
+
+
 def ask(query: str, docs: list[dict], history: list[dict] = None) -> str:
     context = build_context(docs)
     messages = [
@@ -113,10 +135,10 @@ def ask(query: str, docs: list[dict], history: list[dict] = None) -> str:
         max_tokens=1024,
         temperature=0.3,
     )
-    return resp.choices[0].message.content # pyright: ignore[reportReturnType]
+    return resp.choices[0].message.content # type: ignore
 
 
-def ask_stream(query: str, docs: list[dict], history: list[dict] = None): # type: ignore
+def ask_stream(query: str, docs: list[dict], history: list[dict] = None):
     context = build_context(docs)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -126,7 +148,7 @@ def ask_stream(query: str, docs: list[dict], history: list[dict] = None): # type
     messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
     stream = client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=messages, # pyright: ignore[reportArgumentType]
+        messages=messages,
         max_tokens=1024,
         temperature=0.3,
         stream=True,
@@ -135,16 +157,16 @@ def ask_stream(query: str, docs: list[dict], history: list[dict] = None): # type
         delta = chunk.choices[0].delta.content
         if delta:
             yield delta
-            
+
+
 def ask_url_recommendation(query: str, report: str) -> str:
-    """Generate LLM recommendation dựa trên ABSA report từ URL Analyzer."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Báo cáo phân tích sản phẩm:\n\n{report}\n\nCâu hỏi của người dùng: {query}"},
     ]
     resp = client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=messages, # type: ignore
+        messages=messages,
         max_tokens=512,
         temperature=0.3,
     )
