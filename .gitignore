@@ -4,6 +4,7 @@ venv
 *.pyc
 *.log
 .vscode/
+data/
 airflow/logs/
 airflow/airflow.db
 airflow/airflow-webserver.pid
@@ -11,14 +12,10 @@ airflow/airflow.cfg
 wandb/
 models/**/*.pt
 /__pycache__/
-<<<<<<< Updated upstream
 logs
 *.log
 *.pid
 *.out
 *.err
-=======
-logs".env" 
->>>>>>> Stashed changes
 "data/raw/" 
 "data/processed/" 
