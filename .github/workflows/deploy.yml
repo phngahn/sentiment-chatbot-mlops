@@ -14,4 +14,5 @@ jobs:
     - name: update code
       run: |
         cd /home/mlops/CS317
+        
         git pull origin main
