@@ -13,5 +13,5 @@ jobs:
     # Bước 1: Kết nối SSH vào server và kéo code mới về
     - name: update code
       run: |
-        cd /home/mlops/project_quyen/sentiment-chatbot-mlops
+        cd /home/mlops/CS317
         git pull origin main
