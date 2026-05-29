@@ -57,25 +57,24 @@ async def update_settings(settings):
     label = "LogReg (nhanh)" if model == "logreg" else "PhoBERT (chính xác)"
     await cl.Message(content=f"Đã chuyển sang **{label}**").send()
 
+
 @cl.on_message
 async def main(message: cl.Message):
     query = message.content
 
-    # Detect Tiki URL → URL Analyzer mode
     url_match = TIKI_URL_PATTERN.search(query)
 
     if url_match:
-        await handle_url_analysis(url_match.group(1))
+        await handle_url_analysis(url_match.group(1), query=query)
     else:
         await handle_chat(query)
 
 
-async def handle_url_analysis(url: str):
+async def handle_url_analysis(url: str, query: str = ""):
     """URL detected → run 3-tier analysis with progress streaming."""
     msg = cl.Message(content="")
     await msg.send()
 
-    # Lấy model user đã chọn
     absa_model = cl.user_session.get("absa_model", "logreg")
 
     progress_lines = []
@@ -85,7 +84,7 @@ async def handle_url_analysis(url: str):
         msg.content = "\n".join(progress_lines)
         await msg.update()
 
-    report = await analyze_url(url, progress_callback=progress_callback, absa_model=absa_model)
+    report = await analyze_url(url, progress_callback=progress_callback, absa_model=absa_model, user_query=query)
 
     msg.content = "\n".join(progress_lines) + "\n\n---\n\n" + report
     await msg.update()
@@ -101,14 +100,12 @@ async def handle_chat(query: str):
             docs = rag.search(query, top_k=5)
             step.output = f"{len(docs)} sản phẩm"
 
-        # Stream LLM response
         full_answer = ""
         for chunk in llm.ask_stream(query, docs):
             full_answer += chunk
             msg.content = full_answer
             await msg.update()
 
-        # Sources
         sources = [
             {"doc_type": d["doc_type"], "name": d["metadata"].get("name", ""), "score": round(d["score"], 3)}
             for d in docs

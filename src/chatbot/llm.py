@@ -112,7 +112,7 @@ def ask(query: str, docs: list[dict]) -> str:
         max_tokens=1024,
         temperature=0.3,
     )
-    return resp.choices[0].message.content
+    return resp.choices[0].message.content or ""
 
 
 def ask_stream(query: str, docs: list[dict]):
@@ -133,3 +133,17 @@ def ask_stream(query: str, docs: list[dict]):
         delta = chunk.choices[0].delta.content
         if delta:
             yield delta
+            
+def ask_url_recommendation(query: str, report: str) -> str:
+    """Generate LLM recommendation dựa trên ABSA report từ URL Analyzer."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Báo cáo phân tích sản phẩm:\n\n{report}\n\nCâu hỏi của người dùng: {query}"},
+    ]
+    resp = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=messages,
+        max_tokens=512,
+        temperature=0.3,
+    )
+    return resp.choices[0].message.content

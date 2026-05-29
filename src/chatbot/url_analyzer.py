@@ -36,8 +36,8 @@ ASPECTS_VI = {
 }
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
 def _get_redis():
-    """Lazy connect Redis."""
     try:
         r = redis_client.from_url(
             os.getenv("REDIS_URL", "redis://localhost:6379"),
@@ -64,7 +64,7 @@ class ProductAnalysis:
     url:            str
     aspect_scores:  dict
     sample_reviews: list[dict] = field(default_factory=list)
-    source:         str = "kb"   # "cache" | "kb" | "crawl"
+    source:         str = "kb"
     total_analyzed: int = 0
     absa_model_used: str = "logreg"
 
@@ -82,7 +82,6 @@ def extract_product_id(url: str) -> str | None:
 
 
 def _check_qdrant_kb(product_id: str) -> ProductAnalysis | None:
-    """Tier 2: Check Qdrant KB có sản phẩm này chưa."""
     try:
         from qdrant_client import QdrantClient
         from qdrant_client.http import models as qm
@@ -118,7 +117,6 @@ def _check_qdrant_kb(product_id: str) -> ProductAnalysis | None:
             aspect_scores[asp] = {"score": score, "pos": pos, "neg": neg, "pct": pct, "total": total}
             total_analyzed = max(total_analyzed, total)
 
-        # Sample reviews từ KB
         review_results = client.scroll(
             collection_name="tiki_kb",
             scroll_filter=qm.Filter(must=[
@@ -158,7 +156,6 @@ def _check_qdrant_kb(product_id: str) -> ProductAnalysis | None:
 
 
 def crawl_reviews_fast(product_id: str, max_pages: int = 5) -> list[dict]:
-    """Crawl nhanh 5 pages — đủ cho phân tích."""
     collected = []
     for page in range(1, max_pages + 1):
         reviews, total_pages = fetch_reviews_page(product_id, page)
@@ -183,7 +180,6 @@ async def _crawl_and_analyze_async(
     progress_callback=None,
     absa_model: str = "logreg",
 ) -> ProductAnalysis | None:
-    """Tier 3: Crawl Tiki API (parallel) + ABSA inference."""
     loop = asyncio.get_event_loop()
 
     if progress_callback:
@@ -204,7 +200,6 @@ async def _crawl_and_analyze_async(
     if progress_callback:
         await progress_callback(f"🤖 Đang phân tích ABSA ({model_label}) trên {len(reviews)} reviews...")
 
-    # ABSA inference với model thật
     aspect_scores = predict_and_aggregate(reviews, model=absa_model, version="v2")
 
     brand    = raw.get("brand")    or {}
@@ -235,15 +230,15 @@ async def _crawl_and_analyze_async(
 
 def format_analysis_report(analysis: ProductAnalysis) -> str:
     source_label = {
-        "cache":         "⚡ Cache (< 0.1s)",
-        "kb":            "📚 Knowledge Base (< 2s)",
-        "crawl":         "🔄 Crawl + phân tích mới",
+        "cache":          "⚡ Cache (< 0.1s)",
+        "kb":             "📚 Knowledge Base (< 2s)",
+        "crawl":          "🔄 Crawl + phân tích mới",
         "kb_precomputed": "📚 Knowledge Base (pre-computed)",
     }
 
     model_label = {
-        "logreg":        "⚡ LogReg (F1=0.769)",
-        "phobert":       "🎯 PhoBERT (F1=0.848)",
+        "logreg":         "⚡ LogReg (F1=0.769)",
+        "phobert":        "🎯 PhoBERT (F1=0.848)",
         "kb_precomputed": "📚 Pre-computed",
     }.get(analysis.absa_model_used, analysis.absa_model_used)
 
@@ -262,12 +257,12 @@ def format_analysis_report(analysis: ProductAnalysis) -> str:
     ]
 
     for asp in ASPECTS:
-        data     = analysis.aspect_scores.get(asp, {})
-        pct      = data.get("pct", 0)
-        pos      = data.get("pos", 0)
-        neg      = data.get("neg", 0)
-        total    = data.get("total", 0)
-        name_vi  = ASPECTS_VI.get(asp, asp)
+        data    = analysis.aspect_scores.get(asp, {})
+        pct     = data.get("pct", 0)
+        pos     = data.get("pos", 0)
+        neg     = data.get("neg", 0)
+        total   = data.get("total", 0)
+        name_vi = ASPECTS_VI.get(asp, asp)
 
         if total == 0:
             emoji, note = "❓", "Chưa có đánh giá"
@@ -300,11 +295,8 @@ async def analyze_url(
     url: str,
     progress_callback=None,
     absa_model: str = "logreg",
+    user_query: str = "",
 ) -> str:
-    """
-    Main entry point — 3-tier analysis.
-    absa_model: "logreg" (fast) hoặc "phobert" (accurate)
-    """
     product_id = extract_product_id(url)
     if not product_id:
         return "❌ Không thể nhận diện product ID từ URL. Vui lòng paste link Tiki hợp lệ."
@@ -319,6 +311,13 @@ async def analyze_url(
             if cached:
                 if progress_callback:
                     await progress_callback("⚡ Lấy từ cache!")
+                # Vẫn generate LLM recommendation nếu có user_query
+                if user_query and user_query.strip() != url.strip():
+                    from src.chatbot.llm import ask_url_recommendation
+                    if progress_callback:
+                        await progress_callback("💬 Đang tổng hợp nhận xét...")
+                    recommendation = ask_url_recommendation(user_query, cached)
+                    return cached + "\n\n---\n\n## 💡 Nhận xét\n\n" + recommendation
                 return cached
         except Exception:
             pass
@@ -341,6 +340,7 @@ async def analyze_url(
 
         if progress_callback:
             await progress_callback("✅ Phân tích hoàn tất!")
+
     report = format_analysis_report(analysis)
 
     # Lưu vào Redis cache (TTL 1 giờ)
@@ -350,5 +350,12 @@ async def analyze_url(
         except Exception:
             pass
 
+    # LLM recommendation nếu user có câu hỏi
+    if user_query and user_query.strip() != url.strip():
+        from src.chatbot.llm import ask_url_recommendation
+        if progress_callback:
+            await progress_callback("💬 Đang tổng hợp nhận xét...")
+        recommendation = ask_url_recommendation(user_query, report)
+        report = report + "\n\n---\n\n## 💡 Nhận xét\n\n" + recommendation
+
     return report
-    return format_analysis_report(analysis)
