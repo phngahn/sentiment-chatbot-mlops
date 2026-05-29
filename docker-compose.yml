@@ -9,6 +9,7 @@ services:
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: tiki-qdrant
@@ -26,6 +27,21 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.1
+    container_name: tiki-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
     restart: unless-stopped
 
   api:
@@ -52,12 +68,45 @@ services:
     container_name: tiki-ui
     ports:
       - "8001:8001"
+    env_file:
+      - .env
     environment:
       - API_URL=http://api:8000/chat
+      - QDRANT_URL=http://qdrant:6333
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./models:/app/models
     depends_on:
       - api
     restart: unless-stopped
-  
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tiki-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tiki-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
   airflow:
     build:
       context: .
@@ -94,6 +143,7 @@ services:
       - postgres
       - redis
       - qdrant
+      - mlflow
     command: >
       bash -c "
         airflow db migrate &&
@@ -131,6 +181,7 @@ services:
       - postgres
       - redis
       - qdrant
+      - mlflow
     command: >
       bash -c "
         sleep 10 &&
@@ -170,26 +221,13 @@ services:
       - postgres
       - redis
       - qdrant
+      - mlflow
     command: >
       bash -c "
         sleep 10 &&
         rm -f /tmp/airflow-worker.pid &&
         exec airflow celery worker --concurrency 1 --celery-hostname airflow-worker@tiki-airflow-worker --pid /tmp/airflow-worker.pid
       "
-    restart: unless-stopped
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.11.1
-    container_name: tiki-mlflow
-    ports:
-      - "5000:5000"
-    volumes:
-      - mlflow_data:/mlflow
-    command: >
-      mlflow server
-      --backend-store-uri sqlite:///mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
-      --host 0.0.0.0
-      --port 5000
     restart: unless-stopped
 
 volumes:
@@ -198,3 +236,5 @@ volumes:
   airflow_data:
   mlflow_data:
   airflow_postgres_data:
+  prometheus_data:
+  grafana_data:
