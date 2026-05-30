@@ -1,6 +1,6 @@
 """
 Chainlit UI — Tiki Shopping Assistant
-Supports: normal chat (streaming) + URL analysis (3-tier) + multi-turn memory
+Supports: normal chat + URL analysis (3-tier) + multi-turn memory
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.chatbot.retrieval import TikiRAG
-from src.chatbot.llm import ask_stream, rewrite_query
+from src.chatbot.llm import ask, rewrite_query
 from src.chatbot.url_analyzer import analyze_url
 
 
@@ -130,7 +130,6 @@ def extract_product_name_from_report(report: str) -> str | None:
                 if len(clean) >= 8:
                     return clean
 
-    # Fallback: lấy dòng bold dài đầu tiên
     bold_candidates = re.findall(r"\*\*(.+?)\*\*", report)
     for candidate in bold_candidates:
         clean = clean_markdown_line(candidate)
@@ -155,7 +154,6 @@ def extract_category_from_report(report: str) -> str | None:
     if not report:
         return None
 
-    # Thường report có dạng: 🏷 Samsung · 📦 Điện Thoại - Máy Tính Bảng
     match = re.search(r"📦\s*([^\n]+)", report)
     if match:
         return clean_markdown_line(match.group(1))
@@ -391,66 +389,128 @@ async def handle_url_analysis(url: str, query: str = ""):
 
     absa_model = cl.user_session.get("absa_model", "logreg")
     progress_lines: list[str] = []
+    product_id = extract_product_id(url)
+
+    # Lưu context tối thiểu ngay từ đầu
+    cl.user_session.set("current_product", {
+        "id": product_id,
+        "url": url,
+        "name": None,
+        "price_text": None,
+        "category": None,
+        "report": "",
+        "absa_model": absa_model,
+        "status": "analyzing",
+    })
 
     async def progress_callback(text: str):
         progress_lines.append(text)
         msg.content = "\n".join(progress_lines)
         await msg.update()
 
-    report = await analyze_url(
-        url,
-        progress_callback=progress_callback,
-        absa_model=absa_model,
-        user_query=query,
-    )
+    try:
+        report = await analyze_url(
+            url,
+            progress_callback=progress_callback,
+            absa_model=absa_model,
+            user_query=query,
+        )
 
-    product_id = extract_product_id(url)
-    product_name = extract_product_name_from_report(report)
-    price_text = extract_price_text_from_report(report)
-    category = extract_category_from_report(report)
+        if report is None:
+            report = ""
 
-    current_product = {
-        "id": product_id,
-        "url": url,
-        "name": product_name,
-        "price_text": price_text,
-        "category": category,
-        "report": report,
-        "absa_model": absa_model,
-    }
+        product_name = extract_product_name_from_report(report)
+        price_text = extract_price_text_from_report(report)
+        category = extract_category_from_report(report)
 
-    # Quan trọng nhất cho multi-turn:
-    # Lưu sản phẩm vừa phân tích vào session.
-    cl.user_session.set("current_product", current_product)
+        current_product = {
+            "id": product_id,
+            "url": url,
+            "name": product_name,
+            "price_text": price_text,
+            "category": category,
+            "report": report,
+            "absa_model": absa_model,
+            "status": "done",
+        }
 
-    # Đưa URL analysis vào history để rewrite_query / ask_stream có context.
-    history_assistant_content = (
-        "Đã phân tích URL sản phẩm Tiki và lưu làm sản phẩm hiện tại trong hội thoại.\n\n"
-        f"{build_current_product_context(current_product)}"
-    )
-    push_history(query or f"Phân tích sản phẩm: {url}", history_assistant_content)
+        # Quan trọng nhất cho multi-turn:
+        cl.user_session.set("current_product", current_product)
 
-    msg.content = "\n".join(progress_lines) + "\n\n---\n\n" + report
-    await msg.update()
+        history_assistant_content = (
+            "Đã phân tích URL sản phẩm Tiki và lưu làm sản phẩm hiện tại trong hội thoại.\n\n"
+            f"{build_current_product_context(current_product)}"
+        )
+        push_history(query or f"Phân tích sản phẩm: {url}", history_assistant_content)
+
+        msg.content = "\n".join(progress_lines) + "\n\n---\n\n" + report
+        await msg.update()
+
+    except Exception as e:
+        current_product = cl.user_session.get("current_product") or {}
+        current_product["status"] = "error"
+        current_product["error"] = f"{type(e).__name__}: {e}"
+        cl.user_session.set("current_product", current_product)
+
+        msg.content = (
+            "\n".join(progress_lines)
+            + "\n\n---\n\n"
+            + f"❌ Lỗi khi phân tích URL: `{type(e).__name__}: {e}`\n\n"
+            + "Bạn kiểm tra terminal Chainlit để xem traceback chi tiết."
+        )
+        await msg.update()
 
 
 async def handle_chat(query: str):
-    msg = cl.Message(content="")
+    msg = cl.Message(content="🤔 Mình đang đọc lại ngữ cảnh sản phẩm...")
     await msg.send()
 
     try:
         history = cl.user_session.get("history", []) or []
         current_product = cl.user_session.get("current_product")
 
+        if current_product and current_product.get("status") == "analyzing":
+            msg.content = (
+                "Mình vẫn đang phân tích sản phẩm vừa gửi. "
+                "Bạn đợi report hiện ra xong rồi hỏi tiếp nhé."
+            )
+            await msg.update()
+            return
+
+        if current_product and current_product.get("status") == "error":
+            msg.content = (
+                "Lần phân tích URL trước bị lỗi nên mình chưa có đủ dữ liệu review để trả lời chắc chắn. "
+                "Bạn thử gửi lại link hoặc kiểm tra log terminal giúp mình."
+            )
+            await msg.update()
+            return
+
+        if not current_product and is_followup_query(query):
+            msg.content = (
+                "Mình chưa có sản phẩm hiện tại trong hội thoại. "
+                "Bạn gửi link Tiki trước để mình phân tích rồi hỏi tiếp nhé."
+            )
+            await msg.update()
+            return
+
         intent = detect_intent(query)
 
-        search_query = build_search_query(query, current_product, history)
-        augmented_history = build_augmented_history(history, current_product, query)
+        search_query = await cl.make_async(build_search_query)(
+            query,
+            current_product,
+            history,
+        )
+
+        augmented_history = build_augmented_history(
+            history,
+            current_product,
+            query,
+        )
 
         top_k = 8 if intent == "alternative_recommendation" else 5
 
         async with cl.Step(name="🔍 Tìm kiếm", type="retrieval") as step:
-            docs = rag.search(search_query, top_k=top_k)
+            docs = await cl.make_async(rag.search)(search_query, top_k=top_k)
             cl.user_session.set("last_docs", docs)
 
             if search_query != query:
@@ -490,12 +550,17 @@ async def handle_chat(query: str):
                     "- Không bịa thêm thông tin ngoài dữ liệu."
                 )
 
-        full_answer = ""
+        msg.content = "✍️ Mình đang tổng hợp câu trả lời..."
+        await msg.update()
 
-        for chunk in ask_stream(llm_query, docs, history=augmented_history):  # type: ignore
-            full_answer += chunk
-            msg.content = full_answer
-            await msg.update()
+        full_answer = await cl.make_async(ask)(
+            llm_query,
+            docs,
+            history=augmented_history,
+        )
+
+        msg.content = full_answer
+        await msg.update()
 
         push_history(query, full_answer)
 
@@ -518,5 +583,5 @@ async def handle_chat(query: str):
             await cl.Message(content=f"### 📚 Nguồn tham khảo\n\n{source_text}").send()
 
     except Exception as e:
-        msg.content = f"❌ Lỗi: {e}"
+        msg.content = f"❌ Lỗi: `{type(e).__name__}: {e}`"
         await msg.update()
