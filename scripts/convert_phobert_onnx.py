@@ -3,14 +3,10 @@ Convert PhoBERT ABSA model to ONNX format.
 Run: docker exec tiki-airflow-worker python /opt/airflow/convert_phobert_onnx.py
 """
 import os
-from random import random
-from sqlalchemy import between
 import torch
 import torch.nn as nn
 from pathlib import Path
 from transformers import AutoModel, AutoTokenizer
-
-from tests.load_test import ALL_QUERIES
 
 # Paths trong airflow-worker container
 MODEL_DIR = Path("/opt/airflow/models/absa/v2/phobert")
@@ -34,23 +30,6 @@ class MultiHeadPhoBERT(nn.Module):
         logits = torch.stack([head(cls_out) for head in self.heads], dim=1)
         return logits
 
-class SearchOnlyUser(HttpUser):
-    """Test embedding + Qdrant only, no LLM — 100% traffic for capacity test."""
-    weight = 0
-    wait_time = between(1, 3)
-
-    @task
-    @tag("search")
-    def search_product(self):
-        query = random.choice(ALL_QUERIES)
-        with self.client.post(
-            "/search",
-            json={"query": query, "top_k": 5},
-            name="/search [no-LLM]",
-            catch_response=True,
-        ) as resp:
-            if resp.status_code == 200:
-                resp.success()
 
 def main():
     print("Loading PyTorch model...")
