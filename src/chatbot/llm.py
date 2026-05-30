@@ -11,7 +11,7 @@ logger = logging.getLogger("llm")
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_FAST_MODEL = "llama-3.1-8b-instant"
-OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
+OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
