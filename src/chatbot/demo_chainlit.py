@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.chatbot.retrieval import TikiRAG
-from src.chatbot.llm import ask, rewrite_query
+from src.chatbot.llm import ask_stream, rewrite_query
 from src.chatbot.url_analyzer import analyze_url
 
 
@@ -83,11 +83,9 @@ REVIEW_HINTS = [
 def compact_text(text: str, max_chars: int = 2500) -> str:
     if not text:
         return ""
-
     text = str(text).strip()
     if len(text) <= max_chars:
         return text
-
     return text[:max_chars].rstrip() + "\n...[đã rút gọn]"
 
 
@@ -105,20 +103,13 @@ def clean_markdown_line(line: str) -> str:
 
 
 def extract_product_name_from_report(report: str) -> str | None:
-    """
-    Best-effort parser từ report dạng markdown.
-    Nếu không lấy được tên thì vẫn lưu report vào current_product_context.
-    """
     if not report:
         return None
-
     lines = [ln.strip() for ln in report.splitlines()]
-
     for i, line in enumerate(lines):
         if "phân tích sản phẩm" in line.lower():
             for candidate in lines[i + 1 : i + 8]:
                 clean = clean_markdown_line(candidate)
-
                 if not clean:
                     continue
                 if clean.startswith("---"):
@@ -129,50 +120,40 @@ def extract_product_name_from_report(report: str) -> str | None:
                     continue
                 if len(clean) >= 8:
                     return clean
-
     bold_candidates = re.findall(r"\*\*(.+?)\*\*", report)
     for candidate in bold_candidates:
         clean = clean_markdown_line(candidate)
         if len(clean) >= 8 and "phân tích" not in clean.lower():
             return clean
-
     return None
 
 
 def extract_price_text_from_report(report: str) -> str | None:
     if not report:
         return None
-
     match = re.search(r"(\d{1,3}(?:[,.]\d{3})+)\s*đ", report)
     if match:
         return match.group(0)
-
     return None
 
 
 def extract_category_from_report(report: str) -> str | None:
     if not report:
         return None
-
     match = re.search(r"📦\s*([^\n]+)", report)
     if match:
         return clean_markdown_line(match.group(1))
-
     return None
 
 
 def detect_intent(query: str) -> str:
     q = query.lower()
-
     if any(x in q for x in ALTERNATIVE_STRONG_HINTS):
         return "alternative_recommendation"
-
     if any(x in q for x in PURCHASE_HINTS):
         return "purchase_advice"
-
     if any(x in q for x in REVIEW_HINTS):
         return "review_summary"
-
     return "general_qa"
 
 
@@ -184,14 +165,12 @@ def is_followup_query(query: str) -> bool:
 def build_current_product_context(current_product: dict[str, Any] | None) -> str:
     if not current_product:
         return ""
-
     product_id = current_product.get("id") or "Không rõ ID"
     name = current_product.get("name") or "Không rõ tên"
     url = current_product.get("url") or ""
     price_text = current_product.get("price_text") or "Không rõ giá"
     category = current_product.get("category") or "Không rõ ngành hàng"
     report = compact_text(current_product.get("report", ""), MAX_PRODUCT_CONTEXT_CHARS)
-
     return f"""
 [CURRENT_PRODUCT_CONTEXT]
 Sản phẩm hiện tại trong hội thoại:
@@ -212,15 +191,12 @@ def build_search_query(
     current_product: dict[str, Any] | None,
     history: list[dict[str, str]],
 ) -> str:
-    """
-    Query dùng cho retrieval.
-    Không nhét toàn bộ report vào search query vì sẽ làm retrieval nhiễu.
-    Chỉ thêm tên / giá / ngành hàng khi cần follow-up.
-    """
     intent = detect_intent(query)
 
     if not current_product:
-        return rewrite_query(query, history)
+        if history:
+            return rewrite_query(query, history)
+        return query
 
     product_name = current_product.get("name") or ""
     product_id = current_product.get("id") or ""
@@ -240,7 +216,9 @@ def build_search_query(
             f"{product_name}. Ngành hàng: {category}. Giá: {price_text}. Product ID: {product_id}."
         )
 
-    return rewrite_query(query, history)
+    if history:
+        return rewrite_query(query, history)
+    return query
 
 
 def build_augmented_history(
@@ -248,13 +226,7 @@ def build_augmented_history(
     current_product: dict[str, Any] | None,
     query: str,
 ) -> list[dict[str, str]]:
-    """
-    History đưa vào LLM.
-    Nếu user hỏi follow-up, inject current_product_context để model hiểu:
-    'sản phẩm này', 'nó', 'sản phẩm mới gửi' = sản phẩm vừa crawl.
-    """
     intent = detect_intent(query)
-
     should_inject = (
         current_product is not None
         and (
@@ -262,12 +234,9 @@ def build_augmented_history(
             or intent in ["alternative_recommendation", "purchase_advice", "review_summary"]
         )
     )
-
     if not should_inject:
         return history
-
     product_context = build_current_product_context(current_product)
-
     memory_message = {
         "role": "assistant",
         "content": (
@@ -278,13 +247,11 @@ def build_augmented_history(
             f"{product_context}"
         ),
     }
-
     return [memory_message] + history
 
 
 def push_history(user_content: str, assistant_content: str):
     history = cl.user_session.get("history", []) or []
-
     history.append({
         "role": "user",
         "content": compact_text(user_content, 1200),
@@ -293,10 +260,8 @@ def push_history(user_content: str, assistant_content: str):
         "role": "assistant",
         "content": compact_text(assistant_content, 2500),
     })
-
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
-
     cl.user_session.set("history", history)
 
 
@@ -361,14 +326,12 @@ async def start():
 async def update_settings(settings):
     model = settings.get("absa_model", "logreg")
     cl.user_session.set("absa_model", model)
-
     if model == "logreg":
         label = "LogReg nhanh"
     elif model == "phobert_onnx":
         label = "PhoBERT ONNX nhanh"
     else:
         label = "PhoBERT chính xác"
-
     await cl.Message(content=f"Đã chuyển sang **{label}**").send()
 
 
@@ -376,7 +339,6 @@ async def update_settings(settings):
 async def main(message: cl.Message):
     query = message.content.strip()
     url_match = TIKI_URL_PATTERN.search(query)
-
     if url_match:
         await handle_url_analysis(url_match.group(1), query=query)
     else:
@@ -391,7 +353,6 @@ async def handle_url_analysis(url: str, query: str = ""):
     progress_lines: list[str] = []
     product_id = extract_product_id(url)
 
-    # Lưu context tối thiểu ngay từ đầu
     cl.user_session.set("current_product", {
         "id": product_id,
         "url": url,
@@ -434,7 +395,6 @@ async def handle_url_analysis(url: str, query: str = ""):
             "status": "done",
         }
 
-        # Quan trọng nhất cho multi-turn:
         cl.user_session.set("current_product", current_product)
 
         history_assistant_content = (
@@ -462,7 +422,7 @@ async def handle_url_analysis(url: str, query: str = ""):
 
 
 async def handle_chat(query: str):
-    msg = cl.Message(content="🤔 Mình đang đọc lại ngữ cảnh sản phẩm...")
+    msg = cl.Message(content="🤔 Mình đang tìm kiếm...")
     await msg.send()
 
     try:
@@ -531,7 +491,6 @@ async def handle_chat(query: str):
                     "- Nếu dữ liệu chưa đủ để gợi ý chắc chắn, hãy nói rõ hiện tại chưa đủ dữ liệu "
                     "và cần crawl/thêm sản phẩm tương tự."
                 )
-
             elif intent == "purchase_advice":
                 llm_query = (
                     f"{query}\n\n"
@@ -540,7 +499,6 @@ async def handle_chat(query: str):
                     "- Dựa trên review, điểm mạnh, điểm yếu, giá/rating nếu có.\n"
                     "- Kết luận rõ: nên mua nếu ai phù hợp, không nên mua nếu ai không phù hợp."
                 )
-
             elif intent == "review_summary":
                 llm_query = (
                     f"{query}\n\n"
@@ -550,17 +508,14 @@ async def handle_chat(query: str):
                     "- Không bịa thêm thông tin ngoài dữ liệu."
                 )
 
-        msg.content = "✍️ Mình đang tổng hợp câu trả lời..."
+        msg.content = ""
         await msg.update()
 
-        full_answer = await cl.make_async(ask)(
-            llm_query,
-            docs,
-            history=augmented_history,
-        )
-
-        msg.content = full_answer
-        await msg.update()
+        full_answer = ""
+        for chunk in ask_stream(llm_query, docs, history=augmented_history):
+            full_answer += chunk
+            msg.content = full_answer
+            await msg.update()
 
         push_history(query, full_answer)
 
@@ -568,7 +523,6 @@ async def handle_chat(query: str):
         for d in docs:
             metadata = d.get("metadata", {}) or {}
             score = d.get("score", 0) or 0
-
             sources.append({
                 "doc_type": d.get("doc_type", ""),
                 "name": metadata.get("name", ""),

@@ -1,16 +1,20 @@
 """
-RAG Retrieval — hybrid search Qdrant + ABSA-aware re-ranking
-Redis cache + FlagEmbedding (dense+sparse) + max_length=256
+RAG Retrieval — ONNX dense search + Redis cache
+Fast mode: ONNX bge-m3 dense (~1-2s) thay vì FlagEmbedding (~10s)
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
+from pathlib import Path
 import os
 import hashlib
+import numpy as np
 
 QDRANT_URL       = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME  = "tiki_kb"
 EMBED_MODEL_NAME = "BAAI/bge-m3"
 ASPECTS          = ["description", "quality", "packaging", "delivery", "service", "price"]
+
+ONNX_DIR = Path(__file__).resolve().parents[2] / "models" / "bge-m3-onnx"
 
 
 @dataclass
@@ -40,10 +44,44 @@ def _build_qdrant_filter(f: RagFilters):
 
 class TikiRAG:
     def __init__(self):
-        from FlagEmbedding import BGEM3FlagModel
         from qdrant_client import QdrantClient
-        self.model = BGEM3FlagModel(EMBED_MODEL_NAME, use_fp16=True)
+
         self.client = QdrantClient(url=QDRANT_URL)
+        self.onnx_session = None
+        self.tokenizer = None
+        self.flag_model = None
+
+        onnx_path = ONNX_DIR / "bge_m3_dense.onnx"
+        if onnx_path.exists():
+            try:
+                import onnxruntime as ort
+                from transformers import AutoTokenizer
+                self.onnx_session = ort.InferenceSession(str(onnx_path))
+                self.tokenizer = AutoTokenizer.from_pretrained(str(ONNX_DIR))
+                print("TikiRAG: Using ONNX dense encoder (fast mode)")
+            except Exception as e:
+                print(f"TikiRAG: ONNX load failed ({e}), falling back to FlagEmbedding")
+
+        if not self.onnx_session:
+            from FlagEmbedding import BGEM3FlagModel
+            self.flag_model = BGEM3FlagModel(EMBED_MODEL_NAME, use_fp16=True)
+            print("TikiRAG: Using FlagEmbedding (full mode)")
+
+    def _encode_onnx(self, text: str) -> list[float]:
+        enc = self.tokenizer(
+            [text],
+            padding="max_length",
+            truncation=True,
+            max_length=256,
+            return_tensors="np",
+        )
+        outputs = self.onnx_session.run(None, {
+            "input_ids": enc["input_ids"].astype(np.int64),
+            "attention_mask": enc["attention_mask"].astype(np.int64),
+        })
+        cls = outputs[0][0][0]
+        norm = np.linalg.norm(cls)
+        return (cls / norm).tolist() if norm > 0 else cls.tolist()
 
     def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> list[dict]:
         from qdrant_client.http import models as qm
@@ -59,45 +97,34 @@ class TikiRAG:
             if cached:
                 cache_data = pickle.loads(cached)
                 dense = cache_data["dense"]
-                sparse_indices = cache_data["sparse_indices"]
-                sparse_values = cache_data["sparse_values"]
                 cache_hit = True
         except Exception:
             cached = None
 
         if not cache_hit:
-            out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False, max_length=256)
-            dense = out["dense_vecs"][0]
-            sparse = out["lexical_weights"][0]
-            sparse_indices = [int(k) for k in sparse.keys()]
-            sparse_values = [float(v) for v in sparse.values()]
+            if self.onnx_session:
+                dense = self._encode_onnx(query)
+            else:
+                out = self.flag_model.encode([query], return_dense=True, return_sparse=False, return_colbert_vecs=False, max_length=256)
+                dense = out["dense_vecs"][0].tolist()
 
-            # Save to cache (TTL 1 hour)
             try:
                 import redis
                 import pickle
                 r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=False)
-                r.set(cache_key, pickle.dumps({
-                    "dense": dense,
-                    "sparse_indices": sparse_indices,
-                    "sparse_values": sparse_values,
-                }), ex=3600)
+                r.set(cache_key, pickle.dumps({"dense": dense}), ex=3600)
             except Exception:
                 pass
 
         qfilter = _build_qdrant_filter(filters) if filters else None
 
-        results = self.client.query_points(
+        results = self.client.search(
             collection_name=COLLECTION_NAME,
-            prefetch=[
-                qm.Prefetch(query=dense.tolist() if hasattr(dense, 'tolist') else list(dense), using="dense", limit=top_k * 4),
-                qm.Prefetch(query=qm.SparseVector(indices=sparse_indices, values=sparse_values), using="sparse", limit=top_k * 4),
-            ],
-            query=qm.FusionQuery(fusion=qm.Fusion.RRF),
+            query_vector=("dense", dense),
             limit=top_k * 2,
             query_filter=qfilter,
             with_payload=True,
-        ).points
+        )
 
         docs = []
         for pt in results:
