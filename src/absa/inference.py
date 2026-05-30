@@ -3,6 +3,7 @@ ABSA Inference — Load model từ local hoặc W&B, predict aspect sentiments
 Supports: LogReg (fast, real-time) và PhoBERT (accurate, offline)
 """
 from __future__ import annotations
+from marshal import version
 import os
 import logging
 from pathlib import Path
@@ -76,6 +77,50 @@ class PhoBERTPredictor:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()
         logger.info(f"PhoBERT loaded from {model_path} on {self.device}")
+    
+class PhoBERTONNXPredictor:
+    def __init__(self, version: str = "v2"):
+        import onnxruntime as ort
+        from transformers import AutoTokenizer
+
+        onnx_dir = MODEL_DIR / version / "phobert_onnx"
+        onnx_path = onnx_dir / "phobert_absa.onnx"
+        if not onnx_path.exists():
+            raise FileNotFoundError(f"ONNX model not found: {onnx_path}")
+
+        self.session = ort.InferenceSession(str(onnx_path))
+        self.tokenizer = AutoTokenizer.from_pretrained(str(onnx_dir), use_fast=False)
+        logger.info(f"PhoBERT ONNX loaded from {onnx_path}")
+
+    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]: # type: ignore
+        import numpy as np
+        all_results = []
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            enc = self.tokenizer(
+                batch_texts,
+                padding="max_length",
+                truncation=True,
+                max_length=128,
+                return_tensors="np",
+            )
+
+            outputs = self.session.run(None, {
+                "input_ids": enc["input_ids"].astype(np.int64),
+                "attention_mask": enc["attention_mask"].astype(np.int64),
+            })
+
+            logits = outputs[0]  # [batch, 6, 3]
+
+            for j in range(len(batch_texts)):
+                row = {}
+                for k, asp in enumerate(ASPECTS):
+                    pred_idx = int(np.argmax(logits[j][k]))
+                    row[asp] = INV_LABEL[pred_idx]
+                all_results.append(row)
+
+        return all_results
 
     def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
         """
@@ -94,11 +139,11 @@ class PhoBERTPredictor:
                 max_length=128,
                 return_tensors="pt",
             )
-            input_ids      = enc["input_ids"].to(self.device)
-            attention_mask = enc["attention_mask"].to(self.device)
+            input_ids      = enc["input_ids"].to(self.device) # type: ignore
+            attention_mask = enc["attention_mask"].to(self.device) # type: ignore
 
             with torch.no_grad():
-                logits = self.model(input_ids, attention_mask)
+                logits = self.model(input_ids, attention_mask) # type: ignore
 
             for j in range(len(batch_texts)):
                 row = {}
@@ -189,6 +234,16 @@ def get_phobert(version: str = "v2") -> PhoBERTPredictor:
     return _phobert_predictor
 
 
+_phobert_onnx_predictor = None
+
+
+def get_phobert_onnx(version: str = "v2") -> PhoBERTONNXPredictor:
+    global _phobert_onnx_predictor
+    if _phobert_onnx_predictor is None:
+        _phobert_onnx_predictor = PhoBERTONNXPredictor(version)
+    return _phobert_onnx_predictor
+
+
 def predict_and_aggregate(reviews: list[dict], model: str = "logreg", version: str = "v2") -> dict:
     """
     Convenience function — nhận reviews list, trả ABSA scores.
@@ -206,6 +261,12 @@ def predict_and_aggregate(reviews: list[dict], model: str = "logreg", version: s
     if not texts:
         return {asp: {"score": 0.0, "pos": 0, "neg": 0, "pct": 0, "total": 0} for asp in ASPECTS}
 
-    predictor  = get_logreg(version) if model == "logreg" else get_phobert(version)
+    if model == "logreg":
+        predictor = get_logreg(version)
+    elif model == "phobert_onnx":
+        predictor = get_phobert_onnx(version)
+    else:
+        predictor = get_phobert(version)
+
     predictions = predictor.predict(texts)
     return aggregate(predictions)

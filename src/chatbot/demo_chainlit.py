@@ -31,14 +31,14 @@ async def starters(user: cl.User | None = None, message: str | None = None):
 @cl.on_chat_start
 async def start():
     await cl.ChatSettings([
-        Select(
-            id="absa_model",
-            label="🤖 ABSA Model (khi phân tích URL mới)",
-            values=["logreg", "phobert"],
-            initial_value="logreg",
-            description="⚡ LogReg: nhanh ~5s, F1=0.769 | 🎯 PhoBERT: chính xác ~44s, F1=0.848",
-        ),
-    ]).send()
+    Select(
+        id="absa_model",
+        label="🤖 ABSA Model (khi phân tích URL mới)",
+        values=["logreg", "phobert_onnx", "phobert"],
+        initial_value="logreg",
+        description="⚡ LogReg: nhanh ~2s | 🚀 PhoBERT ONNX: nhanh ~5s | 🎯 PhoBERT: chính xác ~44s",
+    ),
+]).send()
 
     cl.user_session.set("absa_model", "logreg")
     cl.user_session.set("history", [])
@@ -108,15 +108,15 @@ async def handle_chat(query: str):
                 step.output = f"{len(docs)} sản phẩm"
 
         full_answer = ""
-        for chunk in ask_stream(query, docs, history=history):
+        for chunk in ask_stream(query, docs, history=history): # type: ignore
             full_answer += chunk
             msg.content = full_answer
             await msg.update()
 
-        history.append({"role": "user", "content": query})
-        history.append({"role": "assistant", "content": full_answer})
-        if len(history) > MAX_HISTORY:
-            history = history[-MAX_HISTORY:]
+        history.append({"role": "user", "content": query}) # type: ignore
+        history.append({"role": "assistant", "content": full_answer}) # type: ignore
+        if len(history) > MAX_HISTORY: # type: ignore
+            history = history[-MAX_HISTORY:] # type: ignore
         cl.user_session.set("history", history)
 
         sources = [
@@ -133,3 +133,4 @@ async def handle_chat(query: str):
     except Exception as e:
         msg.content = f"❌ Lỗi: {e}"
         await msg.update()
+        
