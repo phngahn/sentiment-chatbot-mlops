@@ -46,3 +46,14 @@ def chat(req: ChatRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.post("/search")
+def search_only(req: ChatRequest):
+    filters = RagFilters(
+        min_rating=req.min_rating,
+        price_min=req.price_min,
+        price_max=req.price_max,
+    )
+    docs = rag.search(req.query, top_k=req.top_k, filters=filters)
+    sources = [{"doc_type": d["doc_type"], "name": d["metadata"].get("name", ""), "score": round(d["score"], 3)} for d in docs]
+    return {"sources": sources}
