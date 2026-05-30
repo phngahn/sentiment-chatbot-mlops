@@ -246,6 +246,26 @@ class HealthMonitor(HttpUser):
                     resp.failure("Unhealthy")
 
 
+class SearchOnlyUser(HttpUser):
+    """Test embedding + Qdrant only, no LLM."""
+    weight = 10
+    wait_time = between(1, 3)
+
+    @task
+    @tag("search")
+    def search_product(self):
+        query = random.choice(ALL_QUERIES)
+        with self.client.post(
+            "/search",
+            json={"query": query, "top_k": 5},
+            name="/search [no-LLM]",
+            catch_response=True,
+        ) as resp:
+            if resp.status_code == 200:
+                resp.success()
+            else:
+                resp.failure(f"Status {resp.status_code}")
+                
 @events.test_start.add_listener
 def on_test_start(environment, **kwargs):
     logger.info("=== Load test STARTED ===")
