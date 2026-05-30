@@ -46,19 +46,53 @@ class TikiRAG:
 
     def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> list[dict]:
         from qdrant_client.http import models as qm
+        import hashlib
+        import json
+        import os
 
-        out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False, max_length=256)
-        dense = out["dense_vecs"][0]
-        sparse = out["lexical_weights"][0]
+        # Redis cache embedding
+        cache_hit = False
+        cache_key = f"emb:{hashlib.md5(query.encode()).hexdigest()}"
+        try:
+            import redis
+            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=False)
+            cached = r.get(cache_key)
+            if cached:
+                import pickle
+                cache_data = pickle.loads(cached)
+                dense = cache_data["dense"]
+                sparse_indices = cache_data["sparse_indices"]
+                sparse_values = cache_data["sparse_values"]
+                cache_hit = True
+        except Exception:
+            cached = None
 
-        sparse_indices = [int(k) for k in sparse.keys()]
-        sparse_values  = [float(v) for v in sparse.values()]
+        if not cache_hit:
+            out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False, max_length=256)
+            dense = out["dense_vecs"][0]
+            sparse = out["lexical_weights"][0]
+            sparse_indices = [int(k) for k in sparse.keys()]
+            sparse_values = [float(v) for v in sparse.values()]
+
+            # Save to cache (TTL 1 hour)
+            try:
+                import pickle
+                import redis
+                r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=False)
+                r.set(cache_key, pickle.dumps({
+                    "dense": dense,
+                    "sparse_indices": sparse_indices,
+                    "sparse_values": sparse_values,
+                }), ex=3600)
+            except Exception:
+                pass
+
         qfilter = _build_qdrant_filter(filters) if filters else None
 
         results = self.client.query_points(
             collection_name=COLLECTION_NAME,
             prefetch=[
-                qm.Prefetch(query=dense.tolist(), using="dense", limit=top_k * 4),
+                qm.Prefetch(query=dense.tolist() if hasattr(dense, 'tolist') else dense, using="dense", limit=top_k * 4),
                 qm.Prefetch(query=qm.SparseVector(indices=sparse_indices, values=sparse_values), using="sparse", limit=top_k * 4),
             ],
             query=qm.FusionQuery(fusion=qm.Fusion.RRF),

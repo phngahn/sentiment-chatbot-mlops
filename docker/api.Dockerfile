@@ -15,4 +15,4 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 COPY src/ ./src/
 
 EXPOSE 8000
-CMD ["uvicorn", "src.chatbot.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.chatbot.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
