@@ -1,15 +1,33 @@
 """
-LLM caller — Multi-provider (Groq / OpenRouter)
+LLM caller — Multi-provider (Groq → OpenRouter fallback)
 Streaming + Optimized prompting for ABSA-aware RAG
 """
 from __future__ import annotations
 import os
+import logging
 from groq import Groq
+
+logger = logging.getLogger("llm")
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_FAST_MODEL = "llama-3.1-8b-instant"
+OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# OpenRouter client (fallback)
+_openrouter_client = None
+
+def _get_openrouter():
+    global _openrouter_client
+    if _openrouter_client is None:
+        from openai import OpenAI
+        _openrouter_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        )
+    return _openrouter_client
+
 
 ASPECTS_VI = {
     "description": "Mô tả SP",
@@ -97,83 +115,19 @@ def build_context(docs: list[dict]) -> str:
     return "\n\n" + "=" * 50 + "\n\n".join(parts)
 
 
-def needs_new_search(query: str, history: list[dict]) -> bool:
-    """Dùng LLM nhỏ để detect có cần search Qdrant mới không."""
-    if not history:
-        return True
-
-    messages = [
-        {"role": "system", "content": "Trả lời chỉ YES hoặc NO. Câu hỏi người dùng có cần tìm kiếm sản phẩm MỚI không, hay chỉ hỏi thêm về kết quả vừa trả lời trước đó?"},
-    ]
-    messages.extend(history[-4:])
-    messages.append({"role": "user", "content": query})
-
-    try:
-        resp = client.chat.completions.create(
-            model=GROQ_FAST_MODEL,
-            messages=messages,
-            max_tokens=5,
-            temperature=0,
-        )
-        answer = resp.choices[0].message.content.strip().upper()
-        return "YES" in answer
-    except Exception:
-        return True  # fallback: search mới nếu lỗi
-
-
-def ask(query: str, docs: list[dict], history: list[dict] = None) -> str:
-    context = build_context(docs)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-    ]
-    if history:
-        messages.extend(history)
-    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
-    resp = client.chat.completions.create(
-        model=GROQ_MODEL,
+def _call_openrouter(messages: list[dict], max_tokens: int = 1024, stream: bool = False):
+    """Fallback call to OpenRouter."""
+    or_client = _get_openrouter()
+    return or_client.chat.completions.create(
+        model=OPENROUTER_MODEL,
         messages=messages,
-        max_tokens=1024,
+        max_tokens=max_tokens,
         temperature=0.3,
+        stream=stream,
     )
-    return resp.choices[0].message.content # type: ignore
 
-
-def ask_stream(query: str, docs: list[dict], history: list[dict] = None):
-    context = build_context(docs)
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-    ]
-    if history:
-        messages.extend(history)
-    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
-    stream = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        max_tokens=1024,
-        temperature=0.3,
-        stream=True,
-    ) # type: ignore
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
-
-
-def ask_url_recommendation(query: str, report: str) -> str:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Báo cáo phân tích sản phẩm:\n\n{report}\n\nCâu hỏi của người dùng: {query}"},
-    ]
-    resp = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        max_tokens=512,
-        temperature=0.3,
-    )
-    return resp.choices[0].message.content # type: ignore
 
 def rewrite_query(query: str, history: list[dict]) -> str:
-    """Viết lại query dựa vào history để search Qdrant chính xác hơn."""
     if not history:
         return query
 
@@ -186,11 +140,94 @@ def rewrite_query(query: str, history: list[dict]) -> str:
     try:
         resp = client.chat.completions.create(
             model=GROQ_FAST_MODEL,
-            messages=messages, # type: ignore
-            max_tokens=100,
+            messages=messages,
+            max_tokens=50,
             temperature=0,
         )
-        rewritten = resp.choices[0].message.content.strip() # type: ignore
+        rewritten = resp.choices[0].message.content.strip()
         return rewritten if rewritten else query
     except Exception:
-        return query
+        try:
+            resp = _call_openrouter(messages, max_tokens=50)
+            rewritten = resp.choices[0].message.content.strip()
+            return rewritten if rewritten else query
+        except Exception:
+            return query
+
+
+def ask(query: str, docs: list[dict], history: list[dict] = None) -> str:
+    context = build_context(docs)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+    ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
+
+    # Try Groq first, fallback OpenRouter
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"Groq failed ({e}), falling back to OpenRouter")
+        resp = _call_openrouter(messages)
+        return resp.choices[0].message.content
+
+
+def ask_stream(query: str, docs: list[dict], history: list[dict] = None):
+    context = build_context(docs)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+    ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": f"Thông tin sản phẩm:\n\n{context}\n\nCâu hỏi: {query}"})
+
+    # Try Groq first
+    try:
+        stream = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
+            stream=True,
+        )
+        first_chunk = True
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                if first_chunk:
+                    first_chunk = False
+                yield delta if delta else ""
+    except Exception as e:
+        logger.warning(f"Groq stream failed ({e}), falling back to OpenRouter")
+        stream = _call_openrouter(messages, stream=True)
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+
+def ask_url_recommendation(query: str, report: str) -> str:
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Báo cáo phân tích sản phẩm:\n\n{report}\n\nCâu hỏi của người dùng: {query}"},
+    ]
+
+    try:
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=512,
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        logger.warning(f"Groq failed ({e}), falling back to OpenRouter")
+        resp = _call_openrouter(messages, max_tokens=512)
+        return resp.choices[0].message.content
