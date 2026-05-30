@@ -1,20 +1,16 @@
 """
 RAG Retrieval — hybrid search Qdrant + ABSA-aware re-ranking
-ONNX dense + FlagEmbedding sparse
+Redis cache + FlagEmbedding (dense+sparse) + max_length=256
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from pathlib import Path
 import os
 import hashlib
-import numpy as np
 
 QDRANT_URL       = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION_NAME  = "tiki_kb"
 EMBED_MODEL_NAME = "BAAI/bge-m3"
 ASPECTS          = ["description", "quality", "packaging", "delivery", "service", "price"]
-
-ONNX_DIR = Path(__file__).resolve().parents[2] / "models" / "bge-m3-onnx"
 
 
 @dataclass
@@ -44,48 +40,10 @@ def _build_qdrant_filter(f: RagFilters):
 
 class TikiRAG:
     def __init__(self):
-        from qdrant_client import QdrantClient
-
-        self.client = QdrantClient(url=QDRANT_URL)
-        self.onnx_session = None
-        self.onnx_tokenizer = None
-        self.flag_model = None
-
-        # Try ONNX first
-        onnx_path = ONNX_DIR / "bge_m3_dense.onnx"
-        if onnx_path.exists():
-            try:
-                import onnxruntime as ort
-                from transformers import AutoTokenizer
-                self.onnx_session = ort.InferenceSession(str(onnx_path))
-                self.onnx_tokenizer = AutoTokenizer.from_pretrained(str(ONNX_DIR))
-                print("TikiRAG: Using ONNX dense encoder")
-            except Exception as e:
-                print(f"TikiRAG: ONNX load failed ({e}), falling back to FlagEmbedding")
-
-        # FlagEmbedding for sparse (always needed) or fallback dense
         from FlagEmbedding import BGEM3FlagModel
-        self.flag_model = BGEM3FlagModel(EMBED_MODEL_NAME, use_fp16=True)
-
-    def _encode_dense_onnx(self, text: str) -> np.ndarray:
-        """Encode dense vector using ONNX — ~3-4x faster than FlagEmbedding."""
-        enc = self.onnx_tokenizer(
-            [text],
-            padding="max_length",
-            truncation=True,
-            max_length=256,
-            return_tensors="np",
-        )
-        outputs = self.onnx_session.run(None, {
-            "input_ids": enc["input_ids"].astype(np.int64),
-            "attention_mask": enc["attention_mask"].astype(np.int64),
-        })
-        # CLS token embedding, normalized
-        cls_embedding = outputs[0][0][0]  # [seq_len, hidden_size] -> first token
-        norm = np.linalg.norm(cls_embedding)
-        if norm > 0:
-            cls_embedding = cls_embedding / norm
-        return cls_embedding
+        from qdrant_client import QdrantClient
+        self.model = BGEM3FlagModel(EMBED_MODEL_NAME, use_fp16=True)
+        self.client = QdrantClient(url=QDRANT_URL)
 
     def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> list[dict]:
         from qdrant_client.http import models as qm
@@ -108,20 +66,13 @@ class TikiRAG:
             cached = None
 
         if not cache_hit:
-            # Dense: ONNX if available, else FlagEmbedding
-            if self.onnx_session:
-                dense = self._encode_dense_onnx(query)
-            else:
-                out = self.flag_model.encode([query], return_dense=True, return_sparse=False, return_colbert_vecs=False, max_length=256)
-                dense = out["dense_vecs"][0]
-
-            # Sparse: always FlagEmbedding
-            sparse_out = self.flag_model.encode([query], return_dense=False, return_sparse=True, return_colbert_vecs=False, max_length=256)
-            sparse = sparse_out["lexical_weights"][0]
+            out = self.model.encode([query], return_dense=True, return_sparse=True, return_colbert_vecs=False, max_length=256)
+            dense = out["dense_vecs"][0]
+            sparse = out["lexical_weights"][0]
             sparse_indices = [int(k) for k in sparse.keys()]
             sparse_values = [float(v) for v in sparse.values()]
 
-            # Cache
+            # Save to cache (TTL 1 hour)
             try:
                 import redis
                 import pickle
@@ -139,7 +90,7 @@ class TikiRAG:
         results = self.client.query_points(
             collection_name=COLLECTION_NAME,
             prefetch=[
-                qm.Prefetch(query=dense.tolist() if hasattr(dense, 'tolist') else list(dense), using="dense", limit=top_k * 4), # type: ignore
+                qm.Prefetch(query=dense.tolist() if hasattr(dense, 'tolist') else list(dense), using="dense", limit=top_k * 4),
                 qm.Prefetch(query=qm.SparseVector(indices=sparse_indices, values=sparse_values), using="sparse", limit=top_k * 4),
             ],
             query=qm.FusionQuery(fusion=qm.Fusion.RRF),
