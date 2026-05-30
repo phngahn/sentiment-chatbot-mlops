@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.chatbot.retrieval import TikiRAG
-from src.chatbot.llm import ask_stream, needs_new_search, ask_url_recommendation
+from src.chatbot.llm import ask_stream
 from src.chatbot.url_analyzer import analyze_url
 
 rag = TikiRAG()
