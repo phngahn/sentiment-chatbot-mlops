@@ -1,9 +1,8 @@
-from typing import Optional
+from __future__ import annotations
 """
 FastAPI endpoint — POST /chat, /search
 Pre-warm cache from KB data on startup
 """
-from __future__ import annotations
 import os
 from fastapi import FastAPI
 from pydantic import BaseModel
