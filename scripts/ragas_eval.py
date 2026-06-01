@@ -1,9 +1,6 @@
 """
-RAGAS Evaluation — Tiki Chatbot MLOps
-======================================
-Ưu tiên đọc real queries từ interactions.jsonl.
-Nếu chưa đủ data thì dùng 25 câu hardcode để tự lấy contexts + answers.
-
+RAGAS Evaluation — Tiki Chatbot (domain: nhà cửa & đời sống)
+=============================================================
 Install (one-time):
   docker exec tiki-api pip install ragas==0.1.21 langchain-groq \
       langchain-community "sentence-transformers>=2.2.2" datasets mlflow
@@ -12,6 +9,7 @@ Run:
   docker exec tiki-api python /app/scripts/ragas_eval.py
 """
 from __future__ import annotations
+from typing import Optional, List
 
 import json
 import logging
@@ -31,53 +29,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-GROQ_API_KEY  = os.environ["GROQ_API_KEY"]
-MLFLOW_URI    = os.getenv("MLFLOW_TRACKING_URI", "http://tiki-mlflow:5000")
-QDRANT_URL    = os.getenv("QDRANT_URL",          "http://tiki-qdrant:6333")
-COLLECTION    = "tiki_kb"
-TOP_K         = 3
-GROQ_MODEL    = "llama-3.3-70b-versatile"
-EMBED_MODEL   = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-LOG_FILE      = BASE / "logs" / "interactions.jsonl"
-MIN_REAL_LOGS = 10   # dùng real logs nếu có ít nhất 10 entries
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+MLFLOW_URI   = os.getenv("MLFLOW_TRACKING_URI", "http://tiki-mlflow:5000")
+QDRANT_URL   = os.getenv("QDRANT_URL",          "http://tiki-qdrant:6333")
+COLLECTION   = "tiki_kb"
+TOP_K        = 3
+GROQ_MODEL   = "llama-3.3-70b-versatile"
+EMBED_MODEL  = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+LOG_FILE     = BASE / "logs" / "interactions.jsonl"
+MIN_REAL_LOGS = 10
 
-# ── 25 câu fallback (dùng khi chưa có đủ real queries) ───────────────────────
+# ── Câu hỏi domain nhà cửa & đời sống ────────────────────────────────────────
 FALLBACK_QUESTIONS = [
-    # Đồ gia dụng
-    "Cốc giữ nhiệt nào tốt nhất dưới 500k?",
-    "Nồi cơm điện nào tiết kiệm điện và nấu ngon?",
+    # Bếp & nấu ăn
+    "Nồi cơm điện nào nấu ngon và tiết kiệm điện nhất?",
     "Bình đun siêu tốc loại nào bền và an toàn nhất?",
+    "Chảo chống dính nào tốt dùng được lâu?",
+    "Máy xay sinh tố mini nào xay được đá không bị hỏng?",
+    "Nồi chiên không dầu dung tích 5 lít nào tốt nhất?",
+    # Đồ uống & giữ nhiệt
+    "Cốc giữ nhiệt nào tốt nhất dưới 500k?",
+    "Bình giữ nhiệt 1 lít nào giữ nhiệt lâu nhất?",
+    "Ấm đun nước loại nào vừa nhanh vừa tiết kiệm điện?",
+    # Làm sạch & vệ sinh
+    "Robot hút bụi thông minh tầm 3 triệu có tốt không?",
+    "Máy lau nhà nào lau sạch và dễ sử dụng?",
+    "Nước tẩy rửa nhà bếp nào hiệu quả nhất?",
+    # Không khí & nhiệt độ
     "Máy lọc không khí phù hợp cho phòng ngủ 20m2?",
     "Quạt tích điện dùng được bao nhiêu tiếng một lần sạc?",
-    "Máy xay sinh tố mini nào xay được đá không bị hỏng?",
-    "Robot hút bụi thông minh tầm 3 triệu có tốt không?",
-    "Nồi chiên không dầu dung tích 5 lít nào tốt?",
-    # Điện tử
-    "Tai nghe bluetooth tốt nhất để chạy bộ dưới 1 triệu?",
-    "Loa bluetooth chống nước tốt nhất tầm 1 triệu?",
-    "Sạc dự phòng 20000mAh nào sạc nhanh và pin trâu?",
-    "Bàn phím cơ tốt cho lập trình viên dưới 2 triệu?",
-    "Chuột không dây văn phòng nào êm tay và pin lâu?",
-    "Tai nghe chống ồn tốt nhất tầm 3 triệu?",
-    "Loa di động mini nào âm thanh tốt dưới 500k?",
-    # Làm đẹp & chăm sóc cá nhân
-    "Sữa rửa mặt cho da nhạy cảm nào dịu nhẹ không gây kích ứng?",
-    "Dầu gội đầu chống rụng tóc nào hiệu quả nhất?",
-    "Kem dưỡng ẩm ban đêm cho da khô loại nào tốt?",
+    "Máy tạo độ ẩm nào phù hợp cho phòng ngủ trẻ em?",
+    # Sức khỏe & chăm sóc cá nhân
     "Máy massage cầm tay nào xung lực mạnh mà giá hợp lý?",
-    "Serum vitamin C nào hiệu quả cho da sạm nám?",
-    # Thể thao & sức khỏe
-    "Bình giữ nhiệt 1 lít nào nhẹ phù hợp khi đi gym?",
-    "Thảm yoga loại nào chống trượt tốt và bền?",
     "Cân điện tử thông minh nào đo được chỉ số cơ thể?",
-    # So sánh / đa tiêu chí
-    "Tivi 43 inch nào hình ảnh đẹp tiêu thụ điện thấp dưới 10 triệu?",
     "Máy lọc nước nano nào lọc sạch và ít tốn lõi lọc nhất?",
+    # So sánh & tư vấn
+    "Tủ lạnh mini nào tiêu thụ điện thấp phù hợp phòng trọ?",
+    "Bếp từ đơn nào an toàn và dễ vệ sinh nhất?",
+    "Máy sấy tóc nào ít gây hư tóc nhất?",
 ]
 
 
-# ── Embedding (dùng bge-m3 giống production) ──────────────────────────────────
-# ── Retrieval (dùng TikiRAG production — ONNX nếu có, nhanh hơn nhiều) ──────
+# ── Retrieval (dùng TikiRAG production) ───────────────────────────────────────
 _rag = None
 
 
@@ -90,13 +83,13 @@ def get_rag():
     return _rag
 
 
-def get_contexts(question: str) -> list[str]:
+def get_contexts(question: str) -> List[str]:
     docs = get_rag().search(question, top_k=TOP_K)
     return [d.get("text", "").strip() for d in docs if d.get("text")]
 
 
 # ── Generation ────────────────────────────────────────────────────────────────
-def get_answer(question: str, contexts: list[str]) -> str:
+def get_answer(question: str, contexts: List[str]) -> str:
     from groq import Groq
     ctx_str = "\n\n".join(f"[{i+1}] {c}" for i, c in enumerate(contexts))
     client  = Groq(api_key=GROQ_API_KEY)
@@ -122,12 +115,11 @@ def get_answer(question: str, contexts: list[str]) -> str:
     return resp.choices[0].message.content.strip()
 
 
-# ── Load từ interactions.jsonl (real queries) ─────────────────────────────────
-def load_from_logs() -> tuple[list, list, list]:
+# ── Load từ real logs ─────────────────────────────────────────────────────────
+def load_from_logs() -> tuple:
     if not LOG_FILE.exists():
-        logger.info("interactions.jsonl not found — sẽ dùng fallback questions")
+        logger.info("interactions.jsonl not found — dùng fallback questions")
         return [], [], []
-
     entries = []
     with open(LOG_FILE, encoding="utf-8") as f:
         for line in f:
@@ -137,31 +129,24 @@ def load_from_logs() -> tuple[list, list, list]:
                     entries.append(json.loads(line))
                 except Exception:
                     pass
-
     if len(entries) < MIN_REAL_LOGS:
-        logger.info(f"Chỉ có {len(entries)} real logs (cần {MIN_REAL_LOGS}) — dùng fallback questions")
+        logger.info(f"Chỉ có {len(entries)} real logs — dùng fallback questions")
         return [], [], []
-
-    logger.info(f"Đọc {len(entries)} real queries từ {LOG_FILE}")
-    questions = [e["question"] for e in entries]
-    answers   = [e["answer"]   for e in entries]
-    contexts  = [e.get("contexts", []) for e in entries]
-
-    # Lọc entries không có contexts
-    valid = [(q, a, c) for q, a, c in zip(questions, answers, contexts) if c]
+    logger.info(f"Loaded {len(entries)} real queries")
+    valid = [
+        (e["question"], e["answer"], e.get("contexts", []))
+        for e in entries if e.get("contexts")
+    ]
     if not valid:
-        logger.warning("Không có entry nào có contexts — dùng fallback questions")
         return [], [], []
+    q, a, c = zip(*valid)
+    return list(q), list(a), list(c)
 
-    questions, answers, contexts = zip(*valid)
-    return list(questions), list(answers), list(contexts)
 
-
-# ── Build dataset từ fallback questions ───────────────────────────────────────
-def build_from_fallback() -> tuple[list, list, list]:
-    logger.info(f"Generating answers + contexts cho {len(FALLBACK_QUESTIONS)} câu fallback...")
+# ── Build từ fallback ─────────────────────────────────────────────────────────
+def build_from_fallback() -> tuple:
+    logger.info(f"Building dataset từ {len(FALLBACK_QUESTIONS)} fallback questions...")
     all_q, all_a, all_c = [], [], []
-
     for i, q in enumerate(FALLBACK_QUESTIONS, 1):
         logger.info(f"[{i:02d}/{len(FALLBACK_QUESTIONS)}] {q}")
         try:
@@ -174,15 +159,14 @@ def build_from_fallback() -> tuple[list, list, list]:
             all_a.append(answer)
             all_c.append(contexts)
             logger.info(f"  → {len(contexts)} docs | {answer[:65]}...")
-            time.sleep(0.3)   # tránh spam Groq
+            time.sleep(0.3)
         except Exception as exc:
             logger.warning(f"  → error: {exc}, skipping")
-
     return all_q, all_a, all_c
 
 
 # ── RAGAS ─────────────────────────────────────────────────────────────────────
-def run_ragas(questions: list, answers: list, contexts: list) -> dict:
+def run_ragas(questions: List, answers: List, contexts: List) -> dict:
     from datasets import Dataset
     from langchain_community.embeddings import HuggingFaceEmbeddings
     from langchain_groq import ChatGroq
@@ -231,60 +215,48 @@ def run_ragas(questions: list, answers: list, contexts: list) -> dict:
 # ── MLflow ────────────────────────────────────────────────────────────────────
 def log_mlflow(scores: dict, source: str) -> None:
     import mlflow
-
     mlflow.set_tracking_uri(MLFLOW_URI)
     mlflow.set_experiment("ragas_evaluation")
     run_name = f"ragas_{source}_{datetime.now().strftime('%Y%m%d_%H%M')}"
-
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params({
-            "groq_model":    GROQ_MODEL,
-            "top_k":         TOP_K,
-            "n_samples":     scores["n_samples"],
-            "collection":    COLLECTION,
-            "embed_model":   EMBED_MODEL,
-            "data_source":   source,   # "real_logs" hoặc "fallback"
+            "groq_model":  GROQ_MODEL,
+            "top_k":       TOP_K,
+            "n_samples":   scores["n_samples"],
+            "data_source": source,
+            "embed_model": EMBED_MODEL,
         })
         mlflow.log_metrics({
             "faithfulness":     scores["faithfulness"],
             "answer_relevancy": scores["answer_relevancy"],
         })
-
         out = "/tmp/ragas_results.json"
         scores["df"].to_json(out, orient="records", force_ascii=False, indent=2)
         mlflow.log_artifact(out, artifact_path="ragas")
-
-    logger.info(f"✓ Logged to MLflow: {run_name}")
+    logger.info(f"✓ MLflow: {run_name}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
     logger.info("=== RAGAS Evaluation Start ===")
 
-    # 1. Thử đọc real logs trước
     questions, answers, contexts = load_from_logs()
     source = "real_logs"
 
-    # 2. Fallback nếu không đủ
     if len(questions) < MIN_REAL_LOGS:
         questions, answers, contexts = build_from_fallback()
         source = "fallback"
 
     if len(questions) < 3:
-        logger.error("Không đủ data để eval. Kiểm tra Qdrant + GROQ_API_KEY.")
+        logger.error("Không đủ data. Kiểm tra Qdrant + GROQ_API_KEY.")
         sys.exit(1)
 
     logger.info(f"Dataset: {len(questions)} samples (source: {source})")
-
-    # 3. Run RAGAS
     scores = run_ragas(questions, answers, contexts)
-
-    # 4. Log MLflow
     log_mlflow(scores, source)
 
-    # 5. In kết quả
     print("\n" + "=" * 45)
-    print(f"RAGAS Results  [{source}]")
+    print(f"RAGAS Results [{source}]")
     print("=" * 45)
     print(f"faithfulness:     {scores['faithfulness']:.3f}")
     print(f"answer_relevancy: {scores['answer_relevancy']:.3f}")
