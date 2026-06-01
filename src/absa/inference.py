@@ -77,7 +77,44 @@ class PhoBERTPredictor:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()
         logger.info(f"PhoBERT loaded from {model_path} on {self.device}")
-    
+
+    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
+        """
+        Input:  ["review text 1", "review text 2", ...]
+        Output: [{"description": "neutral", "quality": "positive", ...}, ...]
+        """
+        import torch
+        all_results = []
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            enc = self.tokenizer(
+                batch_texts,
+                padding="max_length",
+                truncation=True,
+                max_length=128,
+                return_tensors="pt",
+            )
+            input_ids      = enc["input_ids"].to(self.device)
+            attention_mask = enc["attention_mask"].to(self.device)
+
+            with torch.no_grad():
+                logits = self.model(input_ids, attention_mask)
+
+            for j in range(len(batch_texts)):
+                row = {}
+                for k, asp in enumerate(ASPECTS):
+                    pred_idx = int(torch.argmax(logits[k][j]).item())
+                    row[asp] = INV_LABEL[pred_idx]
+                all_results.append(row)
+
+        return all_results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PhoBERT ONNX (optimized — dùng cho inference nhanh hơn)
+# ─────────────────────────────────────────────────────────────────────────────
+
 class PhoBERTONNXPredictor:
     def __init__(self, version: str = "v2"):
         import onnxruntime as ort
@@ -92,7 +129,11 @@ class PhoBERTONNXPredictor:
         self.tokenizer = AutoTokenizer.from_pretrained(str(onnx_dir), use_fast=False)
         logger.info(f"PhoBERT ONNX loaded from {onnx_path}")
 
-    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]: # type: ignore
+    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
+        """
+        Input:  ["review text 1", "review text 2", ...]
+        Output: [{"description": "neutral", "quality": "positive", ...}, ...]
+        """
         import numpy as np
         all_results = []
 
@@ -118,38 +159,6 @@ class PhoBERTONNXPredictor:
                 for k, asp in enumerate(ASPECTS):
                     pred_idx = int(np.argmax(logits[j][k]))
                     row[asp] = INV_LABEL[pred_idx]
-                all_results.append(row)
-
-        return all_results
-
-    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
-        """
-        Input:  ["review text 1", "review text 2", ...]
-        Output: [{"description": "neutral", "quality": "positive", ...}, ...]
-        """
-        import torch
-        all_results = []
-
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
-            enc = self.tokenizer(
-                batch_texts,
-                padding="max_length",
-                truncation=True,
-                max_length=128,
-                return_tensors="pt",
-            )
-            input_ids      = enc["input_ids"].to(self.device) # type: ignore
-            attention_mask = enc["attention_mask"].to(self.device) # type: ignore
-
-            with torch.no_grad():
-                logits = self.model(input_ids, attention_mask) # type: ignore
-
-            for j in range(len(batch_texts)):
-                row = {}
-                for k, asp in enumerate(ASPECTS):
-                    pred_idx  = int(torch.argmax(logits[k][j]).item())
-                    row[asp]  = INV_LABEL[pred_idx]
                 all_results.append(row)
 
         return all_results
@@ -216,8 +225,9 @@ def aggregate(predictions: list[dict]) -> dict:
 # Public API — dùng trong url_analyzer.py
 # ─────────────────────────────────────────────────────────────────────────────
 
-_logreg_predictor   = None
-_phobert_predictor  = None
+_logreg_predictor        = None
+_phobert_predictor       = None
+_phobert_onnx_predictor  = None
 
 
 def get_logreg(version: str = "v2") -> LogRegPredictor:
@@ -234,9 +244,6 @@ def get_phobert(version: str = "v2") -> PhoBERTPredictor:
     return _phobert_predictor
 
 
-_phobert_onnx_predictor = None
-
-
 def get_phobert_onnx(version: str = "v2") -> PhoBERTONNXPredictor:
     global _phobert_onnx_predictor
     if _phobert_onnx_predictor is None:
@@ -251,7 +258,7 @@ def predict_and_aggregate(reviews: list[dict], model: str = "logreg", version: s
 
     Args:
         reviews: [{"content": "text", "rating": 5}, ...]
-        model:   "logreg" (fast) hoặc "phobert" (accurate)
+        model:   "logreg" (fast) hoặc "phobert" (accurate) hoặc "phobert_onnx"
         version: "v1" hoặc "v2"
 
     Returns:
