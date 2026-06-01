@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 Scheduler: Crawl sản phẩm có sự thay đổi về số bình luận trong 15 ngày gần nhất.
 
@@ -147,7 +147,7 @@ def _parse_dt(ts: int | Optional[str]) -> datetime | None:
         return None
 
 
-def fetch_new_reviews(product_id: str, cutoff: datetime) -> list[dict]:
+def fetch_new_reviews(product_id: str, cutoff: datetime) -> List[dict]:
     """
     Crawl review của 1 sản phẩm.
     Chỉ lấy review:

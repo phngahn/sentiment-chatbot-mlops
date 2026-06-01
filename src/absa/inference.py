@@ -35,7 +35,7 @@ class LogRegPredictor:
         self.aspects    = bundle["aspects"]
         logger.info(f"LogReg loaded from {model_path}")
 
-    def predict(self, texts: list[str]) -> list[dict]:
+    def predict(self, texts: list[str]) -> List[dict]:
         """
         Input:  ["review text 1", "review text 2", ...]
         Output: [
@@ -78,7 +78,7 @@ class PhoBERTPredictor:
         self.model.eval()
         logger.info(f"PhoBERT loaded from {model_path} on {self.device}")
 
-    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
+    def predict(self, texts: list[str], batch_size: int = 32) -> List[dict]:
         """
         Input:  ["review text 1", "review text 2", ...]
         Output: [{"description": "neutral", "quality": "positive", ...}, ...]
@@ -129,7 +129,7 @@ class PhoBERTONNXPredictor:
         self.tokenizer = AutoTokenizer.from_pretrained(str(onnx_dir), use_fast=False)
         logger.info(f"PhoBERT ONNX loaded from {onnx_path}")
 
-    def predict(self, texts: list[str], batch_size: int = 32) -> list[dict]:
+    def predict(self, texts: list[str], batch_size: int = 32) -> List[dict]:
         """
         Input:  ["review text 1", "review text 2", ...]
         Output: [{"description": "neutral", "quality": "positive", ...}, ...]

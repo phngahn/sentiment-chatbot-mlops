@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 Module 3: Get Product Reviews from Tiki API V2
 Input : products_list.csv
@@ -77,7 +77,7 @@ def fetch_reviews_page(product_id: str, page: int) -> tuple[list[dict], int]:
     return [], 1
 
 
-def crawl_reviews_for_product(product_id: str) -> list[dict]:
+def crawl_reviews_for_product(product_id: str) -> List[dict]:
     """Crawl all review pages for a single product, keeping only content-filled reviews."""
     collected: list[dict] = []
     page = 1

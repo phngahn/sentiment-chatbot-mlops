@@ -29,7 +29,7 @@ BASE_URL = "https://tiki.vn/api/v2/products"
 OUTPUT_FILE = "products_list.csv"
 
 
-def fetch_product_page(category_id: int, page: int, limit: int = 40) -> list[dict]:
+def fetch_product_page(category_id: int, page: int, limit: int = 40) -> List[dict]:
     """Fetch one page of products for a category. Returns list of product dicts."""
     params = {
         "category": category_id,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 URL Analyzer — paste Tiki URL → phân tích sản phẩm real-time
 3-tier: Redis cache → Qdrant KB → Crawl + ABSA + Index
@@ -10,7 +10,7 @@ import asyncio
 import concurrent.futures
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Optional
+from typing import Optional, List, Optional
 import json
 try:
     import redis as redis_client
@@ -156,7 +156,7 @@ def _check_qdrant_kb(product_id: str) -> ProductAnalysis | None:
         return None
 
 
-def crawl_reviews_fast(product_id: str, max_pages: int = 5) -> list[dict]:
+def crawl_reviews_fast(product_id: str, max_pages: int = 5) -> List[dict]:
     collected = []
     for page in range(1, max_pages + 1):
         reviews, total_pages = fetch_reviews_page(product_id, page)

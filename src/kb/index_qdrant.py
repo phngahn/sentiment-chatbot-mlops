@@ -49,7 +49,7 @@ def stable_id(doc_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, str(doc_id)))
 
 
-def load_documents() -> list[dict]:
+def load_documents() -> List[dict]:
     docs = []
     if not DOCS_FILE.exists():
         raise FileNotFoundError(f"Không tìm thấy file: {DOCS_FILE}")

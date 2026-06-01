@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 RAG Retrieval — ONNX dense search + Redis cache
 Fast mode: ONNX bge-m3 dense (~1-2s) thay vì FlagEmbedding (~10s)
@@ -68,7 +68,7 @@ class TikiRAG:
             self.flag_model = BGEM3FlagModel(EMBED_MODEL_NAME, use_fp16=True)
             print("TikiRAG: Using FlagEmbedding (full mode)")
 
-    def _encode_onnx(self, text: str) -> list[float]:
+    def _encode_onnx(self, text: str) -> List[float]:
         enc = self.tokenizer(
             [text],
             padding="max_length",
@@ -84,7 +84,7 @@ class TikiRAG:
         norm = np.linalg.norm(cls)
         return (cls / norm).tolist() if norm > 0 else cls.tolist()
 
-    def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> list[dict]:
+    def search(self, query: str, top_k: int = 5, filters: RagFilters | None = None, absa_rerank_weight: float = 0.15) -> List[dict]:
         from qdrant_client.http import models as qm
 
         # Redis cache

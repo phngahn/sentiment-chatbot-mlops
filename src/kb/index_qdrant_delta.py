@@ -37,7 +37,7 @@ def stable_id(doc_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, str(doc_id)))
 
 
-def load_documents() -> list[dict]:
+def load_documents() -> List[dict]:
     if not DOCS_FILE.exists():
         print(f"Không tìm thấy {DOCS_FILE}")
         return []
@@ -93,7 +93,7 @@ def ensure_collection(client: QdrantClient):
             print(f"Skip index {field}: {e}")
 
 
-def get_affected_product_ids(docs: list[dict]) -> list[int]:
+def get_affected_product_ids(docs: list[dict]) -> List[int]:
     ids = set()
 
     for doc in docs:

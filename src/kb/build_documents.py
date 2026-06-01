@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 Stage 2: Build documents cho Qdrant
 3 loại per product: product_card, aspect_summary, review
@@ -142,7 +142,7 @@ def build_aspect_summary(det: pd.Series, scores: Optional[dict]) -> Optional[dic
     }
 
 
-def build_reviews(det: pd.Series, reviews: pd.DataFrame, scores: Optional[dict]) -> list[dict]:
+def build_reviews(det: pd.Series, reviews: pd.DataFrame, scores: Optional[dict]) -> List[dict]:
     pid = int(det["product_id"])
     if reviews.empty:
         return []

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 """
 Build delta documents cho Qdrant.
 
@@ -106,7 +106,7 @@ def build_direct_delta_review_docs(
     det: pd.Series,
     delta_reviews: pd.DataFrame,
     scores: Optional[dict],
-) -> list[dict]:
+) -> List[dict]:
     """
     Build docs cho tất cả review mới.
     Các docs này không phụ thuộc top_k.
