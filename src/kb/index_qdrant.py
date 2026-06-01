@@ -1,3 +1,4 @@
+from typing import List, Optional
 """
 Stage 3: Embed documents với bge-m3 + upsert vào Qdrant
 

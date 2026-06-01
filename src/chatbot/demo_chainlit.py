@@ -7,7 +7,7 @@ Supports: normal chat + URL analysis (3-tier) + multi-turn memory
 
 
 import re
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import chainlit as cl
 from chainlit.input_widget import Select

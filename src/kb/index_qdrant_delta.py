@@ -1,3 +1,4 @@
+from typing import List, Optional
 """
 Stage 3-delta: Embed delta documents + update Qdrant incrementally.
 

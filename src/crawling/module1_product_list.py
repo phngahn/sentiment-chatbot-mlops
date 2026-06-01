@@ -1,3 +1,4 @@
+from typing import List, Optional
 """
 Module 1: Get Product List from Tiki API V2
 Input : Category ID + limit_page
