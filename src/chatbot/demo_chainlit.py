@@ -6,7 +6,7 @@ Supports: normal chat + URL analysis (3-tier) + multi-turn memory
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 import chainlit as cl
 from chainlit.input_widget import Select
@@ -89,7 +89,7 @@ def compact_text(text: str, max_chars: int = 2500) -> str:
     return text[:max_chars].rstrip() + "\n...[đã rút gọn]"
 
 
-def extract_product_id(url: str) -> str | None:
+def extract_product_id(url: str) -> Optional[str]:
     match = PRODUCT_ID_PATTERN.search(url)
     return match.group(1) if match else None
 
@@ -102,7 +102,7 @@ def clean_markdown_line(line: str) -> str:
     return line.strip()
 
 
-def extract_product_name_from_report(report: str) -> str | None:
+def extract_product_name_from_report(report: str) -> Optional[str]:
     if not report:
         return None
     lines = [ln.strip() for ln in report.splitlines()]
@@ -128,7 +128,7 @@ def extract_product_name_from_report(report: str) -> str | None:
     return None
 
 
-def extract_price_text_from_report(report: str) -> str | None:
+def extract_price_text_from_report(report: str) -> Optional[str]:
     if not report:
         return None
     match = re.search(r"(\d{1,3}(?:[,.]\d{3})+)\s*đ", report)
@@ -137,7 +137,7 @@ def extract_price_text_from_report(report: str) -> str | None:
     return None
 
 
-def extract_category_from_report(report: str) -> str | None:
+def extract_category_from_report(report: str) -> Optional[str]:
     if not report:
         return None
     match = re.search(r"📦\s*([^\n]+)", report)
@@ -266,7 +266,7 @@ def push_history(user_content: str, assistant_content: str):
 
 
 @cl.set_starters
-async def starters(user: cl.User | None = None, message: str | None = None):
+async def starters(user: cl.User | None = None, message: Optional[str] = None):
     return [
         cl.Starter(
             label="🥤 Cốc giữ nhiệt tốt",

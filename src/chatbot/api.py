@@ -1,3 +1,4 @@
+from typing import Optional
 """
 FastAPI endpoint — POST /chat, /search
 Pre-warm cache from KB data on startup
@@ -22,9 +23,9 @@ rag = TikiRAG()
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
-    min_rating: float | None = None
-    price_min: float | None = None
-    price_max: float | None = None
+    min_rating: Optional[float] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
 
 
 class ChatResponse(BaseModel):

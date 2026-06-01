@@ -9,7 +9,7 @@ import asyncio
 import concurrent.futures
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Optional
 import json
 try:
     import redis as redis_client
@@ -69,7 +69,7 @@ class ProductAnalysis:
     absa_model_used: str = "logreg"
 
 
-def extract_product_id(url: str) -> str | None:
+def extract_product_id(url: str) -> Optional[str]:
     match = re.search(r'-p(\d+)', url)
     if match:
         return match.group(1)

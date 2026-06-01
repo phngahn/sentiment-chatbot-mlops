@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Module 2: Get Product Detail from Tiki API V2
 Input : products_list.csv
@@ -54,7 +55,7 @@ def _safe(val) -> str:
     return str(val)
 
 
-def fetch_product_detail(product_id: int | str) -> dict | None:
+def fetch_product_detail(product_id: int | str) -> Optional[dict]:
     """Call product detail endpoint. Returns raw JSON dict or None."""
     url = DETAIL_URL.format(product_id=product_id)
     try:

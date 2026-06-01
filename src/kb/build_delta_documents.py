@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Build delta documents cho Qdrant.
 
@@ -103,7 +104,7 @@ def infer_overall_from_label(label_str) -> str:
 def build_direct_delta_review_docs(
     det: pd.Series,
     delta_reviews: pd.DataFrame,
-    scores: dict | None,
+    scores: Optional[dict],
 ) -> list[dict]:
     """
     Build docs cho tất cả review mới.

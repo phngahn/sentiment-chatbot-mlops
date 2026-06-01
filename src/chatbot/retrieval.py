@@ -1,3 +1,4 @@
+from typing import Optional
 """
 RAG Retrieval — ONNX dense search + Redis cache
 Fast mode: ONNX bge-m3 dense (~1-2s) thay vì FlagEmbedding (~10s)
@@ -20,9 +21,9 @@ ONNX_DIR = Path(__file__).resolve().parents[2] / "models" / "bge-m3-onnx"
 @dataclass
 class RagFilters:
     doc_types: list[str] = field(default_factory=list)
-    min_rating: float | None = None
-    price_min: float | None = None
-    price_max: float | None = None
+    min_rating: Optional[float] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
     aspect_preferences: dict[str, float] = field(default_factory=dict)
 
 

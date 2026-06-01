@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Module 3: Get Product Reviews from Tiki API V2
 Input : products_list.csv
@@ -35,7 +36,7 @@ MAX_REVIEW_PAGES = 10   # safety cap per product
 REVIEWS_PER_PAGE = 20
 
 
-def _fmt_date(ts: int | str | None) -> str:
+def _fmt_date(ts: int | Optional[str]) -> str:
     """Convert Unix timestamp or ISO string to readable date."""
     if not ts:
         return ""

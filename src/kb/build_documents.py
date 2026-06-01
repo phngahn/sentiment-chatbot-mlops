@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Stage 2: Build documents cho Qdrant
 3 loại per product: product_card, aspect_summary, review
@@ -77,7 +78,7 @@ def safe_float(v):
 
 
 # ── Document builders ──────────────────────────────────
-def build_product_card(det: pd.Series, scores: dict | None) -> dict:
+def build_product_card(det: pd.Series, scores: Optional[dict]) -> dict:
     pid = int(det["product_id"])
     lines = [
         f"Sản phẩm: {det.get('name', '')}",
@@ -102,7 +103,7 @@ def build_product_card(det: pd.Series, scores: dict | None) -> dict:
     }
 
 
-def build_aspect_summary(det: pd.Series, scores: dict | None) -> dict | None:
+def build_aspect_summary(det: pd.Series, scores: Optional[dict]) -> Optional[dict]:
     if not scores:
         return None
     pid = int(det["product_id"])
@@ -140,7 +141,7 @@ def build_aspect_summary(det: pd.Series, scores: dict | None) -> dict | None:
     }
 
 
-def build_reviews(det: pd.Series, reviews: pd.DataFrame, scores: dict | None) -> list[dict]:
+def build_reviews(det: pd.Series, reviews: pd.DataFrame, scores: Optional[dict]) -> list[dict]:
     pid = int(det["product_id"])
     if reviews.empty:
         return []
@@ -187,7 +188,7 @@ def build_reviews(det: pd.Series, reviews: pd.DataFrame, scores: dict | None) ->
     return docs
 
 
-def build_metadata(det: pd.Series, scores: dict | None) -> dict:
+def build_metadata(det: pd.Series, scores: Optional[dict]) -> dict:
     meta = {
         "product_id":     int(det["product_id"]),
         "name":           det.get("name"),

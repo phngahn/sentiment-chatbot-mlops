@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Scheduler: Crawl sản phẩm có sự thay đổi về số bình luận trong 15 ngày gần nhất.
 
@@ -104,7 +105,7 @@ def save_state(state: dict) -> None:
 
 # ── API helpers ───────────────────────────────────────────────────────────────
 
-def fetch_review_count(product_id: str) -> int | None:
+def fetch_review_count(product_id: str) -> Optional[int]:
     """Lấy review_count hiện tại của sản phẩm từ product detail API."""
     url = DETAIL_URL.format(product_id=product_id)
     try:
@@ -121,7 +122,7 @@ def fetch_review_count(product_id: str) -> int | None:
     return None
 
 
-def _fmt_date(ts: int | str | None) -> str:
+def _fmt_date(ts: int | Optional[str]) -> str:
     """Chuyển Unix timestamp hoặc ISO string thành datetime string."""
     if not ts:
         return ""
@@ -133,7 +134,7 @@ def _fmt_date(ts: int | str | None) -> str:
         return str(ts)
 
 
-def _parse_dt(ts: int | str | None) -> datetime | None:
+def _parse_dt(ts: int | Optional[str]) -> datetime | None:
     """Parse timestamp thành datetime object để so sánh."""
     if not ts:
         return None
@@ -220,7 +221,7 @@ def fetch_new_reviews(product_id: str, cutoff: datetime) -> list[dict]:
 
 # ── Core job ──────────────────────────────────────────────────────────────────
 
-def crawl_changed_products(products_csv: str | None = None) -> None:
+def crawl_changed_products(products_csv: Optional[str] = None) -> None:
     """
     Job chính được lập lịch chạy.
     1. Đọc danh sách product_id từ products_list.csv
