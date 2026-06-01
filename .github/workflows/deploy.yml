@@ -71,7 +71,7 @@ jobs:
           echo "🔎 Verifying core containers..."
 
           cd /home/mlops/CS317
-          sleep 10
+          sleep 20
 
           docker-compose ps
 
@@ -83,13 +83,35 @@ jobs:
 
           echo "✅ Core containers are running"
 
-      - name: Smoke test API and UI
+      - name: Smoke test API and UI with retry
         run: |
           set -e
-          echo "🧪 Running smoke tests..."
+          echo "🧪 Running smoke tests with retry..."
 
-          curl -fsS http://localhost:8000/docs > /dev/null
-          curl -fsS http://localhost:8001 > /dev/null
+          wait_for_url() {
+            local name="$1"
+            local url="$2"
+            local max_attempts=30
+            local sleep_seconds=5
+
+            echo "⏳ Waiting for $name at $url..."
+
+            for i in $(seq 1 "$max_attempts"); do
+              if curl -fsS --max-time 5 "$url" > /dev/null; then
+                echo "✅ $name is ready"
+                return 0
+              fi
+
+              echo "Attempt $i/$max_attempts: $name not ready yet, retrying in ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+            done
+
+            echo "❌ $name is not ready after $max_attempts attempts"
+            return 1
+          }
+
+          wait_for_url "API" "http://localhost:8000/docs"
+          wait_for_url "UI" "http://localhost:8001"
 
           echo "✅ API and UI smoke tests passed"
           echo "🎉 CD deployment completed successfully"
