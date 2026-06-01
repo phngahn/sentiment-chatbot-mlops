@@ -115,16 +115,40 @@ def warm_cache():
     print("Cache warming started in background...")
 
 
+
+import json as _json, time as _time, pathlib as _pathlib
+
+_LOG_FILE = _pathlib.Path("/app/logs/interactions.jsonl")
+_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+def _log_interaction(question, answer, docs, latency_ms):
+    try:
+        entry = {
+            "timestamp":  __import__("datetime").datetime.utcnow().isoformat(),
+            "question":   question,
+            "answer":     answer,
+            "contexts":   [d.get("text", "")[:500] for d in docs],
+            "sources":    [{"doc_type": d["doc_type"], "name": d["metadata"].get("name",""), "score": round(d["score"],3)} for d in docs],
+            "latency_ms": latency_ms,
+            "n_docs":     len(docs),
+        }
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[log] failed: {e}")
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
+    _t0 = _time.time()
     filters = RagFilters(
         min_rating=req.min_rating,
         price_min=req.price_min,
         price_max=req.price_max,
     )
-    docs = rag.search(req.query, top_k=req.top_k, filters=filters)
+    docs   = rag.search(req.query, top_k=req.top_k, filters=filters)
     answer = llm.ask(req.query, docs)
     sources = [{"doc_type": d["doc_type"], "name": d["metadata"].get("name", ""), "score": round(d["score"], 3)} for d in docs]
+    _log_interaction(req.query, answer, docs, round((_time.time() - _t0) * 1000))
     return ChatResponse(answer=answer, sources=sources)
 
 
