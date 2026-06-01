@@ -77,43 +77,22 @@ FALLBACK_QUESTIONS = [
 
 
 # ── Embedding (dùng bge-m3 giống production) ──────────────────────────────────
-_flag_model = None
+# ── Retrieval (dùng TikiRAG production — ONNX nếu có, nhanh hơn nhiều) ──────
+_rag = None
 
 
-def get_dense_vec(text: str) -> list[float]:
-    global _flag_model
-    if _flag_model is None:
-        logger.info("Loading bge-m3 (first time, ~30s)...")
-        from FlagEmbedding import BGEM3FlagModel
-        _flag_model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=False)
-    import numpy as np
-    out = _flag_model.encode(
-        [text],
-        return_dense=True,
-        return_sparse=False,
-        return_colbert_vecs=False,
-        max_length=256,
-    )
-    vec = out["dense_vecs"][0]
-    return (vec / (np.linalg.norm(vec) + 1e-8)).tolist()
+def get_rag():
+    global _rag
+    if _rag is None:
+        logger.info("Loading TikiRAG...")
+        from src.chatbot.retrieval import TikiRAG
+        _rag = TikiRAG()
+    return _rag
 
 
-# ── Retrieval ─────────────────────────────────────────────────────────────────
 def get_contexts(question: str) -> list[str]:
-    from qdrant_client import QdrantClient
-    client  = QdrantClient(url=QDRANT_URL)
-    results = client.query_points(
-        collection_name=COLLECTION,
-        query=get_dense_vec(question),
-        using="dense",
-        limit=TOP_K,
-        with_payload=True,
-    ).points
-    return [
-        pt.payload.get("content", "").strip()
-        for pt in results
-        if pt.payload and pt.payload.get("content")
-    ]
+    docs = get_rag().search(question, top_k=TOP_K)
+    return [d.get("text", "").strip() for d in docs if d.get("text")]
 
 
 # ── Generation ────────────────────────────────────────────────────────────────
