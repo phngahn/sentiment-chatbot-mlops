@@ -1,18 +1,95 @@
-name: Deploy to Server (Test Environment)
+name: CD - Deploy to Test Server
 
-# Kích hoạt khi có người push code hoặc merge pull request vào nhánh main
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+
+concurrency:
+  group: deploy-test-server
+  cancel-in-progress: true
 
 jobs:
   deploy:
+    name: Deploy latest code to test server
     runs-on: self-hosted
 
     steps:
-    # Bước 1: Kết nối SSH vào server và kéo code mới về
-    - name: update code
-      run: |
-        cd /home/mlops/CS317
-        
-        git pull origin main
+      - name: Pull latest code from GitHub
+        run: |
+          set -e
+          echo "🔄 Pulling latest code from main..."
+
+          cd /home/mlops/CS317
+          git fetch origin main
+          git reset --hard origin/main
+
+          echo "✅ Code updated to latest main"
+
+      - name: Validate docker-compose config
+        run: |
+          set -e
+          echo "🔍 Validating docker-compose.yml..."
+
+          cd /home/mlops/CS317
+          docker-compose config -q
+
+          echo "✅ docker-compose config is valid"
+
+      - name: Build API and UI images
+        run: |
+          set -e
+          echo "🏗️ Building only api and ui images..."
+
+          cd /home/mlops/CS317
+          docker-compose build api ui
+
+          echo "✅ api and ui images built successfully"
+
+      - name: Restart API and UI services
+        run: |
+          set -e
+          echo "🚀 Restarting api and ui services..."
+
+          cd /home/mlops/CS317
+          docker-compose up -d --no-deps api ui
+
+          echo "✅ api and ui services restarted"
+
+      - name: Restart Airflow services to reload code
+        run: |
+          set -e
+          echo "♻️ Restarting Airflow services only..."
+
+          cd /home/mlops/CS317
+          docker-compose restart airflow airflow-scheduler airflow-worker
+
+          echo "✅ Airflow services restarted"
+
+      - name: Verify important containers are running
+        run: |
+          set -e
+          echo "🔎 Verifying core containers..."
+
+          cd /home/mlops/CS317
+          sleep 10
+
+          docker-compose ps
+
+          test "$(docker inspect -f '{{.State.Running}}' tiki-api)" = "true"
+          test "$(docker inspect -f '{{.State.Running}}' tiki-ui)" = "true"
+          test "$(docker inspect -f '{{.State.Running}}' tiki-airflow)" = "true"
+          test "$(docker inspect -f '{{.State.Running}}' tiki-airflow-scheduler)" = "true"
+          test "$(docker inspect -f '{{.State.Running}}' tiki-airflow-worker)" = "true"
+
+          echo "✅ Core containers are running"
+
+      - name: Smoke test API and UI
+        run: |
+          set -e
+          echo "🧪 Running smoke tests..."
+
+          curl -fsS http://localhost:8000/docs > /dev/null
+          curl -fsS http://localhost:8001 > /dev/null
+
+          echo "✅ API and UI smoke tests passed"
+          echo "🎉 CD deployment completed successfully"
