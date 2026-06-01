@@ -14,3 +14,10 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
     wandb \
     psycopg2-binary \
     apache-airflow-providers-celery
+
+RUN pip install --no-cache-dir \
+    ragas==0.1.21 \
+    langchain-groq \
+    langchain-community \
+    "sentence-transformers>=2.2.2" \
+    datasets
