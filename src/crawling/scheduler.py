@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 """
 Scheduler: Crawl sản phẩm có sự thay đổi về số bình luận trong 15 ngày gần nhất.
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 """
 URL Analyzer — paste Tiki URL → phân tích sản phẩm real-time
 3-tier: Redis cache → Qdrant KB → Crawl + ABSA + Index

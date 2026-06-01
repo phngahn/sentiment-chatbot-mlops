@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 """
 Chainlit UI — Tiki Shopping Assistant
 Supports: normal chat + URL analysis (3-tier) + multi-turn memory
