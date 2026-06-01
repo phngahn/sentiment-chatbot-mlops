@@ -21,7 +21,7 @@ ASPECTS = ["description", "quality", "packaging", "delivery", "service", "price"
 MIN_REVIEWS = 1  # cần ít nhất 1 review mới tính score
 
 
-def parse_label(label_str: str) -> list[dict]:
+def parse_label(label_str: str) -> list:
     """Parse label column: "[{'aspect':..., 'sentiment':...}, ...]" """
     try:
         return ast.literal_eval(label_str)
