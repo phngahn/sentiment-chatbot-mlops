@@ -1,9 +1,8 @@
-from typing import Optional
+from __future__ import annotations
 """
 RAG Retrieval — ONNX dense search + Redis cache
 Fast mode: ONNX bge-m3 dense (~1-2s) thay vì FlagEmbedding (~10s)
 """
-from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import os

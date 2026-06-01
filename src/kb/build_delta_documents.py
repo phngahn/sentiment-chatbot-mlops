@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 """
 Build delta documents cho Qdrant.
 

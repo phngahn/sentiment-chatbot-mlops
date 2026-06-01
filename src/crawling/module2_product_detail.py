@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 """
 Module 2: Get Product Detail from Tiki API V2
 Input : products_list.csv

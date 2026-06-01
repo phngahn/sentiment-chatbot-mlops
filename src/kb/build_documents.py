@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 """
 Stage 2: Build documents cho Qdrant
 3 loại per product: product_card, aspect_summary, review
