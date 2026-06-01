@@ -118,13 +118,14 @@ class TikiRAG:
 
         qfilter = _build_qdrant_filter(filters) if filters else None
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=COLLECTION_NAME,
-            query_vector=("dense", dense),
+            query=dense.tolist() if hasattr(dense, 'tolist') else list(dense),
+            using="dense",
             limit=top_k * 2,
             query_filter=qfilter,
             with_payload=True,
-        )
+        ).points
 
         docs = []
         for pt in results:
