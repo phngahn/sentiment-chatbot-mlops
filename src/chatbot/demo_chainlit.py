@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 Chainlit UI — Tiki Shopping Assistant
 Supports: normal chat + URL analysis (3-tier) + multi-turn memory
@@ -7,7 +7,6 @@ Supports: normal chat + URL analysis (3-tier) + multi-turn memory
 
 
 import re
-from typing import Any, Optional, List
 
 import chainlit as cl
 from chainlit.input_widget import Select

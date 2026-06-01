@@ -1,4 +1,5 @@
-from typing import List, Optional
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 Stage 3-delta: Embed delta documents + update Qdrant incrementally.
 

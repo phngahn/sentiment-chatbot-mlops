@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 FastAPI endpoint — POST /chat, /search
 Pre-warm cache from KB data on startup

@@ -1,9 +1,9 @@
-from typing import List, Optional
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 ABSA Inference — Load model từ local hoặc W&B, predict aspect sentiments
 Supports: LogReg (fast, real-time) và PhoBERT (accurate, offline)
 """
-from __future__ import annotations
 from marshal import version
 import os
 import logging

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 Stage 2: Build documents cho Qdrant
 3 loại per product: product_card, aspect_summary, review

@@ -1,8 +1,9 @@
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 LLM caller — Multi-provider (Groq → OpenRouter fallback)
 Streaming + Optimized prompting for ABSA-aware RAG
 """
-from __future__ import annotations
 import os
 import logging
 from groq import Groq

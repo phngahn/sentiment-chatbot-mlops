@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 Stage 1: Aggregate review-level ABSA labels
 → product × aspect scores

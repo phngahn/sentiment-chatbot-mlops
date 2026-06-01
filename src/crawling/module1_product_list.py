@@ -1,4 +1,5 @@
-from typing import List, Optional
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 Module 1: Get Product List from Tiki API V2
 Input : Category ID + limit_page

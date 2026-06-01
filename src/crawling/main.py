@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 """
 Tiki Crawler – Main Runner
 Orchestrates Module 1 → Module 2 → Module 3

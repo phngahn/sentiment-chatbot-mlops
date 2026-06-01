@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 URL Analyzer — paste Tiki URL → phân tích sản phẩm real-time
 3-tier: Redis cache → Qdrant KB → Crawl + ABSA + Index
@@ -10,7 +10,6 @@ import asyncio
 import concurrent.futures
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, List, Optional
 import json
 try:
     import redis as redis_client

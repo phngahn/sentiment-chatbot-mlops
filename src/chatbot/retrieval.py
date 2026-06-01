@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 RAG Retrieval — ONNX dense search + Redis cache
 Fast mode: ONNX bge-m3 dense (~1-2s) thay vì FlagEmbedding (~10s)

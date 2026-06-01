@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, List, Dict, Tuple, Any
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 """
 Module 3: Get Product Reviews from Tiki API V2
 Input : products_list.csv
