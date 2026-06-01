@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir torch==2.4.1 --index-url https://download.pytorch
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 EXPOSE 8000
 CMD ["uvicorn", "src.chatbot.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
