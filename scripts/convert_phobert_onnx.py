@@ -49,7 +49,7 @@ def main():
         dummy_text,
         padding="max_length",
         truncation=True,
-        max_length=256,
+        max_length=128,
         return_tensors="pt",
     )
 
