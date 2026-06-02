@@ -56,6 +56,8 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./models:/app/models 
     depends_on:
       - qdrant
       - redis
