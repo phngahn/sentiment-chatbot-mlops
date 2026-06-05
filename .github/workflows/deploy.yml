@@ -25,7 +25,7 @@ jobs:
 
           echo "✅ Code updated to latest main"
       - name: Fix data directory permissions
-        run: chmod -R 777 /home/mlops/CS317/data/
+        run: sudo chmod -R 777 /home/mlops/CS317/data/
 
       - name: Validate docker-compose config
         run: |
