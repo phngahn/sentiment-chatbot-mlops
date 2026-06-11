@@ -13,8 +13,6 @@ Hệ thống RAG Chatbot hỏi đáp sản phẩm Tiki kết hợp Aspect-Based 
 **GVHD:** TS. Đỗ Văn Tiến | **GVTH:** CN. Lê Trần Trọng Khiêm  
 **Trường:** Đại học Công nghệ Thông tin - ĐHQG TP.HCM
 
----
-
 ## 1. Thành viên nhóm 7
 
 | MSSV | Họ và tên | Phụ trách |
@@ -24,8 +22,6 @@ Hệ thống RAG Chatbot hỏi đáp sản phẩm Tiki kết hợp Aspect-Based 
 | 23520078 | Trần Nhật Phương Anh | Chuẩn bị dữ liệu ABSA, huấn luyện và tối ưu siêu tham số (Sweep) cho 5 mô hình ABSA (PhoBERT, LogReg, RF, TextCNN, BiGRU), đánh giá hiệu năng, sử dụng W&B để ghi nhận toàn bộ quá trình thí nghiệm. Viết báo cáo. |
 | 23520556 | Đoàn Nhật Hưng | Xây dựng RAG Chatbot (FastAPI, Chainlit, hybrid search Qdrant, Redis cache, multi-turn), Airflow DAG 3 & 4, tích hợp PhoBERT ONNX + BGE-M3 ONNX, Prometheus + Grafana monitoring, RAGAS evaluation, Docker Compose 12 services trên server được cấp. **[Thực hành]** AWS EC2 deployment, CloudWatch logging, Grafana alerting → Telegram, CI/CD cloud. |
 
----
-
 ## 2. Kiến trúc hệ thống
 
 ![Kiến trúc tổng quan](docs/images/architecture_overview.jpg)
@@ -33,8 +29,6 @@ Hệ thống RAG Chatbot hỏi đáp sản phẩm Tiki kết hợp Aspect-Based 
 Hệ thống gồm 3 luồng chính hoạt động liên kết với nhau: **Data Pipeline** tự động hóa từ crawl → label → ABSA → cập nhật Knowledge Base; **Serving** xử lý câu hỏi real-time; và **MLOps Infrastructure** đảm bảo tracking, monitoring, CI/CD.
 
 ![Tech Stack](docs/images/tech_stack.jpg)
-
----
 
 ## 3. MLOps Pipeline (Đồ án Lý thuyết)
 
@@ -157,8 +151,6 @@ git pull → chmod -R 777 data/ → docker-compose build api ui
 | tiki-grafana | grafana/grafana | 3000 |
 | tiki-locust | locustio/locust | 8089 |
 
----
-
 ## 4. Bổ sung cho học phần Thực hành
 
 > Các phần dưới đây được **thêm mới hoàn toàn** so với đồ án lý thuyết.  
@@ -197,8 +189,6 @@ push to main
                   → online: git pull + build api/ui + restart services
                   → offline: skip, workflow vẫn pass
 ```
-
----
 
 ## 5. Hướng dẫn cài đặt
 
@@ -289,44 +279,44 @@ docker compose up -d
 docker compose ps
 ```
 
-Đợi 2-3 phút để services sẵn sàng, đặc biệt là `tiki-api` cần load ONNX models và warm cache.
+Đợi 2-3 phút để services sẵn sàng, đặc biệt `tiki-api` cần load ONNX models và warm cache.
 
 ### Bước 5 — Khởi tạo Knowledge Base
 
-**Cách nhanh — restore từ Qdrant snapshot:**
+**Cách nhanh — restore từ Qdrant snapshot** (chạy trên máy đang host Docker):
 
 ```bash
-curl -X POST "http://localhost:6333/collections/tiki_kb/snapshots/upload?priority=snapshot" \
+curl -X POST "http://[SERVER_IP]:6333/collections/tiki_kb/snapshots/upload?priority=snapshot" \
   -H "Content-Type: multipart/form-data" \
   -F "snapshot=@tiki_kb.snapshot"
 
 # Kiểm tra
-curl -s http://localhost:6333/collections/tiki_kb | \
+curl -s http://[SERVER_IP]:6333/collections/tiki_kb | \
   python3 -c "import sys,json; r=json.load(sys.stdin)['result']; print(f'Status: {r[\"status\"]}, Vectors: {r[\"points_count\"]}')"
 # → Status: green, Vectors: 2962
 ```
 
-**Cách đầy đủ — chạy pipeline qua Airflow (cần S3 data):**
+**Cách đầy đủ — chạy pipeline qua Airflow** (cần S3 data):
 
-Vào Airflow UI `http://[server-ip]:8080`, trigger thủ công lần lượt theo thứ tự: DAG 1 → DAG 2 → DAG 3 → DAG 4.
-
----
+Vào Airflow UI `http://[SERVER_IP]:8080`, trigger thủ công lần lượt: DAG 1 → DAG 2 → DAG 3 → DAG 4.
 
 ## 6. Kiểm thử
 
-### Health check cơ bản
+> Thay `[SERVER_IP]` bằng IP server nội bộ (VPN) hoặc `13.251.141.210` (cloud). Các lệnh `docker exec` và `docker compose` cần chạy trực tiếp trên máy đang host Docker.
+
+### Health check
 
 ```bash
 # API
-curl http://localhost:8000/health
+curl http://[SERVER_IP]:8000/health
 # → {"status":"ok"}
 
 # Qdrant vectors count
-curl -s http://localhost:6333/collections/tiki_kb | \
+curl -s http://[SERVER_IP]:6333/collections/tiki_kb | \
   python3 -c "import sys,json; print(json.load(sys.stdin)['result']['points_count'])"
 # → 2962
 
-# Redis
+# Redis (chạy trên Docker host)
 docker exec tiki-redis redis-cli PING
 # → PONG
 ```
@@ -335,51 +325,51 @@ docker exec tiki-redis redis-cli PING
 
 ```bash
 # Câu hỏi thông thường
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://[SERVER_IP]:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"query": "Nồi cơm điện nào tốt nhất?", "session_id": "test-001"}'
 
 # Multi-turn (cùng session_id)
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://[SERVER_IP]:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"query": "So sánh với máy hút bụi thì sao?", "session_id": "test-001"}'
 
 # URL Analyzer
-curl -X POST http://localhost:8000/chat \
+curl -X POST http://[SERVER_IP]:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"query": "https://tiki.vn/noi-com-dien-abc", "session_id": "test-002"}'
 ```
 
-### RAGAS evaluation
+### RAGAS evaluation (chạy trên Docker host)
 
 ```bash
 docker exec tiki-api python /app/scripts/ragas_eval.py
-# Kết quả log vào MLflow → http://localhost:5000
+# Kết quả log vào MLflow → http://[SERVER_IP]:5000
 ```
 
 ### Load testing
 
 ```bash
 # Qua Locust UI
-open http://localhost:8089
+open http://[SERVER_IP]:8089
 
-# Headless (20 users, 2 phút)
+# Headless (20 users, 2 phút) — chạy trên Docker host
 docker compose exec locust locust \
   --headless -u 20 -r 2 --run-time 120s \
   --host http://tiki-api:8000
 ```
 
-### Kiểm tra Airflow DAGs
+### Kiểm tra Airflow DAGs (chạy trên Docker host)
 
 ```bash
-# Xem logs DAG gần nhất
+# Xem logs
 docker compose logs tiki-airflow --tail=50
 
 # Vào UI để trigger/monitor
-open http://localhost:8080  # admin/admin
+open http://[SERVER_IP]:8080  # admin/admin
 ```
 
-### Kiểm tra CloudWatch (cloud only)
+### Kiểm tra CloudWatch logs (cloud only)
 
 ```bash
 aws logs describe-log-groups --region ap-southeast-1
@@ -390,8 +380,6 @@ aws logs filter-log-events \
   --region ap-southeast-1 \
   --limit 20
 ```
-
----
 
 ## 7. Truy cập services
 
@@ -409,8 +397,6 @@ aws logs filter-log-events \
 ```bash
 ssh -i your-key.pem -L 8080:localhost:8080 -L 5000:localhost:5000 ubuntu@13.251.141.210
 ```
-
----
 
 ## 8. Cấu trúc thư mục
 
@@ -443,15 +429,11 @@ sentiment-chatbot-mlops/
 └── docker-compose.yml
 ```
 
----
-
 ## 9. Limitations
 
 - **Domain hạn chế:** Knowledge Base chỉ chứa sản phẩm ngành Nhà cửa & Đời sống (~2,962 sản phẩm). Câu hỏi ngoài domain sẽ có chất lượng trả lời thấp hơn.
 - **Rate limit:** Groq API giới hạn 25 RPM — bottleneck thực khi nhiều user đồng thời. Redis cache và OpenRouter fallback giảm thiểu nhưng không triệt tiêu.
 - **PhoBERT retraining:** Cần GPU để train lại, hiện dùng human-in-the-loop — DAG 3 phát hiện drift và gửi W&B alert để team can thiệp thủ công.
-
----
 
 ## License
 
