@@ -17,11 +17,11 @@ jobs:
       - name: Pull latest code from GitHub
         run: |
           set -e
-          echo "🔄 Pulling latest code from main..."
+          echo "Pulling latest code from main..."
           cd /home/mlops/CS317
           git fetch origin main
           git reset --hard origin/main
-          echo "✅ Code updated to latest main"
+          echo "Code updated to latest main"
 
       - name: Fix data directory permissions
         run: sudo chmod -R 777 /home/mlops/CS317/data/
@@ -29,39 +29,39 @@ jobs:
       - name: Validate docker-compose config
         run: |
           set -e
-          echo "🔍 Validating docker-compose.yml..."
+          echo "Validating docker-compose.yml..."
           cd /home/mlops/CS317
           docker-compose config -q
-          echo "✅ docker-compose config is valid"
+          echo "docker-compose config is valid"
 
       - name: Build API and UI images
         run: |
           set -e
-          echo "🏗️ Building only api and ui images..."
+          echo "Building only api and ui images..."
           cd /home/mlops/CS317
           docker-compose build api ui
-          echo "✅ api and ui images built successfully"
+          echo "api and ui images built successfully"
 
       - name: Restart API and UI services
         run: |
           set -e
-          echo "🚀 Restarting api and ui services..."
+          echo "Restarting api and ui services..."
           cd /home/mlops/CS317
           docker-compose up -d --no-deps api ui
-          echo "✅ api and ui services restarted"
+          echo "api and ui services restarted"
 
       - name: Restart Airflow services to reload code
         run: |
           set -e
-          echo "♻️ Restarting Airflow services only..."
+          echo "Restarting Airflow services only..."
           cd /home/mlops/CS317
           docker-compose restart airflow airflow-scheduler airflow-worker
-          echo "✅ Airflow services restarted"
+          echo "Airflow services restarted"
 
       - name: Verify important containers are running
         run: |
           set -e
-          echo "🔎 Verifying core containers..."
+          echo "Verifying core containers..."
           cd /home/mlops/CS317
           sleep 20
           docker-compose ps
@@ -70,33 +70,33 @@ jobs:
           test "$(docker inspect -f '{{.State.Running}}' tiki-airflow)" = "true"
           test "$(docker inspect -f '{{.State.Running}}' tiki-airflow-scheduler)" = "true"
           test "$(docker inspect -f '{{.State.Running}}' tiki-airflow-worker)" = "true"
-          echo "✅ Core containers are running"
+          echo "Core containers are running"
 
       - name: Smoke test API and UI with retry
         run: |
           set -e
-          echo "🧪 Running smoke tests with retry..."
+          echo "Running smoke tests with retry..."
           wait_for_url() {
             local name="$1"
             local url="$2"
             local max_attempts=30
             local sleep_seconds=5
-            echo "⏳ Waiting for $name at $url..."
+            echo "Waiting for $name at $url..."
             for i in $(seq 1 "$max_attempts"); do
               if curl -fsS --max-time 5 "$url" > /dev/null; then
-                echo "✅ $name is ready"
+                echo "$name is ready"
                 return 0
               fi
               echo "Attempt $i/$max_attempts: $name not ready yet, retrying in ${sleep_seconds}s..."
               sleep "$sleep_seconds"
             done
-            echo "❌ $name is not ready after $max_attempts attempts"
+            echo "$name is not ready after $max_attempts attempts"
             return 1
           }
           wait_for_url "API" "http://localhost:8000/docs"
           wait_for_url "UI" "http://localhost:8001"
-          echo "✅ API and UI smoke tests passed"
-          echo "🎉 CD deployment completed successfully"
+          echo "API and UI smoke tests passed"
+          echo "CD deployment completed successfully"
 
   deploy-ec2:
     name: Deploy to AWS EC2
@@ -108,10 +108,10 @@ jobs:
         run: |
           if nc -z -w5 ${{ secrets.EC2_HOST }} 22 2>/dev/null; then
             echo "reachable=true" >> $GITHUB_OUTPUT
-            echo "✅ EC2 is online, proceeding with deployment"
+            echo "EC2 is online, proceeding with deployment"
           else
             echo "reachable=false" >> $GITHUB_OUTPUT
-            echo "⚠️ EC2 is offline, skipping deployment"
+            echo "EC2 is offline, skipping deployment"
           fi
 
       - name: Deploy to EC2 via SSH
@@ -133,4 +133,4 @@ jobs:
             sleep 20
             test "$(docker inspect -f '{{.State.Running}}' tiki-api)" = "true"
             test "$(docker inspect -f '{{.State.Running}}' tiki-ui)" = "true"
-            echo "✅ EC2 deployment completed"
+            echo "EC2 deployment completed"
